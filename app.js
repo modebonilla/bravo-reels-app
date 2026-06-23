@@ -4,7 +4,7 @@
 // 1. Cambia esto por la URL real de tu Worker en Cloudflare
 //    (la obtienes después de publicarlo, ej:
 //    https://bravo-reels-worker.tu-subdominio.workers.dev)
-const WORKER_URL = "https://bravo-reels-worker.modebonilla.workers.dev/";
+const WORKER_URL = "https://bravo-reels-worker.TU-SUBDOMINIO.workers.dev";
 
 const DIA_NOMBRES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MES_NOMBRES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -14,13 +14,11 @@ const MES_NOMBRES = ["enero","febrero","marzo","abril","mayo","junio","julio","a
 // ============================================================
 const state = {
   rawText: "",
-  reels: [],        // [{ numero, tema, copyout }]
+  reels: [],        // [{ numero, tipo, tema, copyout }]
   cliente: "",
-  fechaInicio: "",
-  reelsPorDia: 1,
-  dias: [1,2,3,4,5],
-  horarios: ["10:00"],
-  schedule: []       // [{ numero, tema, copyout, fecha: Date, hora }]
+  calendarYear: new Date().getFullYear(),
+  calendarMonth: new Date().getMonth(), // 0-indexed
+  schedule: []       // [{ numero, tema, copyout, tipo, fecha: Date, hora }]
 };
 
 // ============================================================
@@ -199,10 +197,13 @@ function renderReelsList() {
     card.innerHTML = `
       <div class="reel-card-head">
         <span class="reel-tag">REEL ${reel.numero}</span>
-        <select class="reel-tipo-input tipo-${reel.tipo}">
-          <option value="venta" ${reel.tipo === "venta" ? "selected" : ""}>VENTA</option>
-          <option value="valor" ${reel.tipo === "valor" ? "selected" : ""}>VALOR</option>
-        </select>
+        <div class="reel-card-head-actions">
+          <button type="button" class="copy-btn" title="Copiar copyout">📋 Copiar</button>
+          <select class="reel-tipo-input tipo-${reel.tipo}">
+            <option value="venta" ${reel.tipo === "venta" ? "selected" : ""}>VENTA</option>
+            <option value="valor" ${reel.tipo === "valor" ? "selected" : ""}>VALOR</option>
+          </select>
+        </div>
       </div>
       <label>Tema</label>
       <input class="reel-tema-input" value="${escapeAttr(reel.tema)}">
@@ -215,6 +216,16 @@ function renderReelsList() {
     tipoSelect.addEventListener("change", () => {
       tipoSelect.classList.remove("tipo-venta", "tipo-valor");
       tipoSelect.classList.add(`tipo-${tipoSelect.value}`);
+    });
+
+    const copyBtn = card.querySelector(".copy-btn");
+    copyBtn.addEventListener("click", () => {
+      const text = card.querySelector(".reel-copy-input").value;
+      navigator.clipboard.writeText(text).then(() => {
+        const original = copyBtn.textContent;
+        copyBtn.textContent = "✅ Copiado";
+        setTimeout(() => { copyBtn.textContent = original; }, 1500);
+      });
     });
   });
 }
@@ -232,10 +243,7 @@ backTo1Btn.addEventListener("click", () => showStep(1));
 
 continueTo3Btn.addEventListener("click", () => {
   syncReelsFromDOM();
-  // fecha mínima = hoy
-  const today = new Date().toISOString().split("T")[0];
-  fechaInicioInput.min = today;
-  if (!fechaInicioInput.value) fechaInicioInput.value = today;
+  renderStep3();
   showStep(3);
 });
 
@@ -247,94 +255,216 @@ function escapeAttr(str) {
 }
 
 // ============================================================
-// PASO 3 — CALENDARIZACIÓN
+// PASO 3 — CALENDARIO INTERACTIVO
 // ============================================================
 const clienteInput = document.getElementById("clienteInput");
-const fechaInicioInput = document.getElementById("fechaInicioInput");
-const reelsPorDiaInput = document.getElementById("reelsPorDiaInput");
-const horariosGroup = document.getElementById("horariosGroup");
-const diasGroup = document.getElementById("diasGroup");
+const pendingReelsRow = document.getElementById("pendingReelsRow");
+const calMonthLabel = document.getElementById("calMonthLabel");
+const calendarGrid = document.getElementById("calendarGrid");
+const assignedList = document.getElementById("assignedList");
+const calPrevBtn = document.getElementById("calPrevBtn");
+const calNextBtn = document.getElementById("calNextBtn");
 const backTo2Btn = document.getElementById("backTo2Btn");
 const generateBtn = document.getElementById("generateBtn");
 const step3Error = document.getElementById("step3Error");
 
-const HORARIOS_DEFAULT = ["10:00", "18:00", "14:00"];
-
-function renderHorariosInputs() {
-  const count = parseInt(reelsPorDiaInput.value, 10);
-  horariosGroup.innerHTML = "";
-  for (let i = 0; i < count; i++) {
-    const input = document.createElement("input");
-    input.type = "time";
-    input.className = "horario-input";
-    input.value = state.horarios[i] || HORARIOS_DEFAULT[i] || "10:00";
-    horariosGroup.appendChild(input);
-  }
+function renderStep3() {
+  renderPendingChips();
+  renderCalendar();
+  renderAssignedList();
 }
-reelsPorDiaInput.addEventListener("change", renderHorariosInputs);
-renderHorariosInputs();
+
+function getAssignedNumeros() {
+  return new Set(state.schedule.map(e => e.numero));
+}
+
+function getPendingReels() {
+  const assigned = getAssignedNumeros();
+  return state.reels.filter(r => !assigned.has(r.numero));
+}
+
+function dateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function renderPendingChips() {
+  const pending = getPendingReels();
+  if (pending.length === 0) {
+    pendingReelsRow.innerHTML = `<span class="pending-empty">Todos los reels ya tienen fecha asignada.</span>`;
+    return;
+  }
+  pendingReelsRow.innerHTML = pending.map((r, i) =>
+    `<span class="pending-chip ${i === 0 ? "next" : ""}">REEL ${r.numero}${i === 0 ? " · siguiente" : ""}</span>`
+  ).join("");
+}
+
+function renderCalendar() {
+  const year = state.calendarYear;
+  const month = state.calendarMonth;
+  calMonthLabel.textContent = `${capitalize(MES_NOMBRES[month])} ${year}`;
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = (firstOfMonth.getDay() + 6) % 7; // 0 = lunes
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const byDate = {};
+  state.schedule.forEach(entry => {
+    const key = dateKey(entry.fecha);
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(entry);
+  });
+
+  let html = "";
+  for (let i = 0; i < startOffset; i++) {
+    html += `<div class="calendar-day empty"></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const key = dateKey(date);
+    const entries = byDate[key] || [];
+    const isToday = date.getTime() === today.getTime();
+
+    const badges = entries.map(e =>
+      `<span class="cal-badge tipo-${e.tipo}" data-numero="${e.numero}" title="Quitar REEL ${e.numero}">${e.numero} ✕</span>`
+    ).join("");
+
+    html += `
+      <div class="calendar-day ${isToday ? "today" : ""}" data-date="${key}">
+        <span class="cal-day-num">${day}</span>
+        <div class="cal-day-badges">${badges}</div>
+      </div>
+    `;
+  }
+
+  calendarGrid.innerHTML = html;
+}
+
+function renderAssignedList() {
+  if (state.schedule.length === 0) {
+    assignedList.innerHTML = `<span class="assigned-empty">Aún no has asignado ningún reel. Da clic en una fecha del calendario.</span>`;
+    return;
+  }
+
+  const sorted = [...state.schedule].sort((a, b) => {
+    const diff = a.fecha - b.fecha;
+    if (diff !== 0) return diff;
+    return (a.hora || "").localeCompare(b.hora || "");
+  });
+
+  assignedList.innerHTML = sorted.map(entry => `
+    <div class="assigned-row" data-numero="${entry.numero}">
+      <span class="assigned-tag">REEL ${entry.numero}</span>
+      <span class="assigned-tema">${escapeHtml(entry.tema)}</span>
+      <span class="assigned-fecha">${formatDateEs(entry.fecha)}</span>
+      <input type="time" class="assigned-hora-input" value="${entry.hora}">
+      <button type="button" class="assigned-remove-btn" title="Quitar">✕</button>
+    </div>
+  `).join("");
+
+  assignedList.querySelectorAll(".assigned-row").forEach(row => {
+    const numero = parseInt(row.dataset.numero, 10);
+
+    row.querySelector(".assigned-hora-input").addEventListener("change", e => {
+      const entry = state.schedule.find(s => s.numero === numero);
+      if (entry) entry.hora = e.target.value || "10:00";
+    });
+
+    row.querySelector(".assigned-remove-btn").addEventListener("click", () => {
+      removeAssignment(numero);
+    });
+  });
+}
+
+function assignNextReel(date) {
+  const next = getPendingReels()[0];
+  if (!next) return;
+
+  const lastHora = state.schedule.length > 0 ? state.schedule[state.schedule.length - 1].hora : "10:00";
+
+  state.schedule.push({
+    ...next,
+    fecha: date,
+    hora: lastHora
+  });
+
+  renderStep3();
+}
+
+function removeAssignment(numero) {
+  state.schedule = state.schedule.filter(e => e.numero !== numero);
+  renderStep3();
+}
+
+calendarGrid.addEventListener("click", e => {
+  const badge = e.target.closest(".cal-badge");
+  if (badge) {
+    removeAssignment(parseInt(badge.dataset.numero, 10));
+    return;
+  }
+  const dayCell = e.target.closest(".calendar-day");
+  if (dayCell && !dayCell.classList.contains("empty")) {
+    const [y, m, d] = dayCell.dataset.date.split("-").map(Number);
+    assignNextReel(new Date(y, m - 1, d));
+  }
+});
+
+calPrevBtn.addEventListener("click", () => {
+  state.calendarMonth--;
+  if (state.calendarMonth < 0) { state.calendarMonth = 11; state.calendarYear--; }
+  renderCalendar();
+});
+
+calNextBtn.addEventListener("click", () => {
+  state.calendarMonth++;
+  if (state.calendarMonth > 11) { state.calendarMonth = 0; state.calendarYear++; }
+  renderCalendar();
+});
 
 backTo2Btn.addEventListener("click", () => showStep(2));
 
-generateBtn.addEventListener("click", async () => {
+generateBtn.addEventListener("click", () => {
   step3Error.classList.add("hidden");
 
   state.cliente = clienteInput.value.trim() || "Cliente Bravo";
-  state.fechaInicio = fechaInicioInput.value;
-  state.reelsPorDia = parseInt(reelsPorDiaInput.value, 10);
-  state.horarios = Array.from(horariosGroup.querySelectorAll(".horario-input")).map(i => i.value || "10:00");
-  state.dias = Array.from(diasGroup.querySelectorAll("input[type=checkbox]:checked")).map(c => parseInt(c.value, 10));
 
-  if (!state.fechaInicio) {
-    step3Error.textContent = "Selecciona una fecha de inicio.";
+  if (state.schedule.length === 0) {
+    step3Error.textContent = "Asigna al menos un reel en el calendario antes de continuar.";
     step3Error.classList.remove("hidden");
     return;
   }
-  if (state.dias.length === 0) {
-    step3Error.textContent = "Selecciona al menos un día de publicación.";
+  if (state.schedule.length < state.reels.length) {
+    const pendientes = getPendingReels().map(r => r.numero).join(", ");
+    step3Error.textContent = `Aún tienes reels sin fecha: REEL ${pendientes}. Asígnalos en el calendario o regresa a editarlos.`;
     step3Error.classList.remove("hidden");
     return;
   }
 
-  state.schedule = buildSchedule(state.reels, state);
-
-  const last = state.schedule[state.schedule.length - 1];
+  const sorted = [...state.schedule].sort((a, b) => a.fecha - b.fecha);
   document.getElementById("deliverySummary").textContent =
-    `${state.reels.length} reels programados del ${formatDateEs(state.schedule[0].fecha)} al ${formatDateEs(last.fecha)} para ${state.cliente}.`;
+    `${state.reels.length} reels programados del ${formatDateEs(sorted[0].fecha)} al ${formatDateEs(sorted[sorted.length - 1].fecha)} para ${state.cliente}.`;
 
   showStep(4);
 });
 
-function buildSchedule(reels, cfg) {
-  const schedule = [];
-  let cursor = new Date(cfg.fechaInicio + "T00:00:00");
-  let idx = 0;
-
-  while (idx < reels.length) {
-    const dow = cursor.getDay();
-    if (cfg.dias.includes(dow)) {
-      for (let slot = 0; slot < cfg.reelsPorDia && idx < reels.length; slot++) {
-        schedule.push({
-          ...reels[idx],
-          fecha: new Date(cursor),
-          hora: cfg.horarios[slot] || cfg.horarios[0] || "10:00"
-        });
-        idx++;
-      }
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return schedule;
+function formatDateEs(date) {
+  return `${DIA_NOMBRES[date.getDay()].slice(0, 3)} ${date.getDate()} de ${MES_NOMBRES[date.getMonth()]}`;
 }
 
-function formatDateEs(date) {
-  return `${date.getDate()} de ${MES_NOMBRES[date.getMonth()]}`;
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // ============================================================
 // PASO 4 — ENTREGABLES
 // ============================================================
 document.getElementById("downloadPdfBtn").addEventListener("click", generateCopyoutsPDF);
+document.getElementById("downloadTxtBtn").addEventListener("click", generateCopyoutsTXT);
 document.getElementById("downloadCalBtn").addEventListener("click", generateCalendarImage);
 document.getElementById("restartBtn").addEventListener("click", restartApp);
 
@@ -343,8 +473,11 @@ function restartApp() {
   fileNameDisplay.textContent = "";
   rawTextInput.value = "";
   fileInput.value = "";
+  clienteInput.value = "";
   state.reels = [];
   state.schedule = [];
+  state.calendarYear = new Date().getFullYear();
+  state.calendarMonth = new Date().getMonth();
   showStep(1);
 }
 
@@ -425,6 +558,31 @@ function generateCopyoutsPDF() {
   });
 
   doc.save(`Copyouts_${slugify(state.cliente)}.pdf`);
+}
+
+// ---------- TXT DE COPYOUTS (para copiar/pegar en Meta, conserva emojis) ----------
+function generateCopyoutsTXT() {
+  const lines = [];
+  lines.push(`COPYOUTS PARA REELS - ${state.cliente}`.toUpperCase());
+  lines.push("Contenido preparado para publicación en redes sociales.");
+  lines.push("");
+
+  state.reels.forEach(reel => {
+    lines.push("================================");
+    lines.push(`REEL ${reel.numero} · ${(reel.tipo || "valor").toUpperCase()}`);
+    lines.push(`Tema: ${reel.tema}`);
+    lines.push("");
+    lines.push(reel.copyout);
+    lines.push("");
+  });
+
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Copyouts_${slugify(state.cliente)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------- IMAGEN DE CALENDARIO ----------

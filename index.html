@@ -86,46 +86,34 @@
     <!-- STEP 3 -->
     <section class="panel hidden" id="panel-3">
       <p class="eyebrow">// 03</p>
-      <h1>Datos de calendarización</h1>
-      <p class="hint">Si no llenas horarios o días, usamos los valores recomendados de Bravo: 10:00 am / 6:00 pm, lunes a viernes.</p>
+      <h1>Elige fecha y hora de cada reel</h1>
+      <p class="hint">Da clic en el día donde quieres programar el siguiente reel pendiente — el orden en que los vayas clickeando es el orden en que se asignan. Si te equivocas, da clic en la "✕" de un reel ya asignado para quitarlo.</p>
 
-      <div class="form-grid">
-        <label class="field">
-          <span class="field-label">Nombre del cliente</span>
-          <input type="text" id="clienteInput" placeholder="Ej. Laboratorios Cuore">
-        </label>
+      <label class="field field-narrow">
+        <span class="field-label">Nombre del cliente</span>
+        <input type="text" id="clienteInput" placeholder="Ej. Laboratorios Cuore">
+      </label>
 
-        <label class="field">
-          <span class="field-label">Fecha de inicio</span>
-          <input type="date" id="fechaInicioInput">
-        </label>
+      <div class="pending-block">
+        <span class="field-label">Pendientes por asignar</span>
+        <div id="pendingReelsRow" class="pending-chips"></div>
+      </div>
 
-        <label class="field">
-          <span class="field-label">Reels por día</span>
-          <select id="reelsPorDiaInput">
-            <option value="1">1 (uno diario)</option>
-            <option value="2">2 (dos diarios)</option>
-            <option value="3">3 al día</option>
-          </select>
-        </label>
-
-        <div class="field">
-          <span class="field-label">Horarios</span>
-          <div id="horariosGroup" class="horarios-group"></div>
+      <div class="calendar-card">
+        <div class="calendar-nav">
+          <button type="button" id="calPrevBtn" class="cal-nav-btn">←</button>
+          <span id="calMonthLabel" class="calendar-month-label"></span>
+          <button type="button" id="calNextBtn" class="cal-nav-btn">→</button>
         </div>
-
-        <div class="field field-wide">
-          <span class="field-label">Días de publicación</span>
-          <div class="checkbox-group" id="diasGroup">
-            <label><input type="checkbox" value="1" checked><span>Lun</span></label>
-            <label><input type="checkbox" value="2" checked><span>Mar</span></label>
-            <label><input type="checkbox" value="3" checked><span>Mié</span></label>
-            <label><input type="checkbox" value="4" checked><span>Jue</span></label>
-            <label><input type="checkbox" value="5" checked><span>Vie</span></label>
-            <label><input type="checkbox" value="6"><span>Sáb</span></label>
-            <label><input type="checkbox" value="0"><span>Dom</span></label>
-          </div>
+        <div class="calendar-weekdays">
+          <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
         </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </div>
+
+      <div class="assigned-block">
+        <span class="field-label">Programación asignada</span>
+        <div id="assignedList" class="assigned-list"></div>
       </div>
 
       <div id="step3Error" class="error-msg hidden"></div>
@@ -146,8 +134,14 @@
         <div class="deliverable-card">
           <span class="deliverable-tag">PDF</span>
           <h3>Copyouts para reels</h3>
-          <p id="pdfDeliverableDesc">Texto listo para publicar, con identidad Bravo.</p>
+          <p id="pdfDeliverableDesc">Versión formateada con identidad Bravo, para mostrar a cliente o equipo.</p>
           <button type="button" id="downloadPdfBtn" class="btn-primary">Descargar PDF</button>
+        </div>
+        <div class="deliverable-card">
+          <span class="deliverable-tag">TXT</span>
+          <h3>Copyouts en texto plano</h3>
+          <p id="txtDeliverableDesc">Para copiar y pegar directo en Meta — conserva los emojis perfecto.</p>
+          <button type="button" id="downloadTxtBtn" class="btn-primary">Descargar TXT</button>
         </div>
         <div class="deliverable-card">
           <span class="deliverable-tag">PNG</span>
