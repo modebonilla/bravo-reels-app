@@ -4,7 +4,7 @@
 // 1. Cambia esto por la URL real de tu Worker en Cloudflare
 //    (la obtienes después de publicarlo, ej:
 //    https://bravo-reels-worker.tu-subdominio.workers.dev)
-const WORKER_URL = "https://bravo-reels-worker.TU-SUBDOMINIO.workers.dev";
+const WORKER_URL = "https://bravo-reels-worker.modebonilla.workers.dev/";
 
 const DIA_NOMBRES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MES_NOMBRES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
