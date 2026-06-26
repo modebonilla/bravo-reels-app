@@ -240,6 +240,12 @@ function syncReelsFromDOM() {
 
 backTo1Btn.addEventListener("click", () => showStep(1));
 
+const downloadTxtStep2Btn = document.getElementById("downloadTxtStep2Btn");
+downloadTxtStep2Btn.addEventListener("click", () => {
+  syncReelsFromDOM();
+  generateCopyoutsTXT();
+});
+
 continueTo3Btn.addEventListener("click", () => {
   syncReelsFromDOM();
   renderStep3();

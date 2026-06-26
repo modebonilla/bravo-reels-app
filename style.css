@@ -241,7 +241,14 @@ textarea:focus, input:focus, select:focus {
 .panel-actions {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-top: 36px;
+}
+
+.panel-actions-left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .btn-primary, .btn-ghost {
