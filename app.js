@@ -17,13 +17,16 @@ const state = {
   cliente: "",
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
-  schedule: []       // [{ numero, tema, copyout, tipo, fecha: Date, hora }]
+  schedule: []       // [{ id, contentType: 'reel'|'imagen'|'carrusel', fecha: Date, hora, copyout, ... }]
 };
+
+let currentStepNum = 1;
 
 // ============================================================
 // NAVEGACIÓN DE PASOS
 // ============================================================
 function showStep(n) {
+  currentStepNum = n;
   document.querySelectorAll(".panel").forEach(p => p.classList.add("hidden"));
   document.getElementById(`panel-${n}`).classList.remove("hidden");
 
@@ -145,6 +148,7 @@ processBtn.addEventListener("click", async () => {
 
     renderReelsList();
     showStep(2);
+    saveSession();
   } catch (err) {
     console.error(err);
     showStep1Error(`Ocurrió un error: ${err.message}. Intenta de nuevo.`);
@@ -260,7 +264,7 @@ function escapeAttr(str) {
 }
 
 // ============================================================
-// PASO 3 — CALENDARIO INTERACTIVO
+// PASO 3 — PROGRAMACIÓN (calendario + reel pendiente + imagen + carrusel)
 // ============================================================
 const clienteInput = document.getElementById("clienteInput");
 const pendingReelsRow = document.getElementById("pendingReelsRow");
@@ -272,15 +276,27 @@ const calNextBtn = document.getElementById("calNextBtn");
 const backTo2Btn = document.getElementById("backTo2Btn");
 const generateBtn = document.getElementById("generateBtn");
 const step3Error = document.getElementById("step3Error");
+const dayMenu = document.getElementById("dayMenu");
+const modalOverlay = document.getElementById("modalOverlay");
+const modalBox = document.getElementById("modalBox");
+
+const CONTENT_ICONS = { reel: "🎬", imagen: "🖼", carrusel: "📚" };
+
+function uid() {
+  return `e${Date.now()}${Math.random().toString(16).slice(2)}`;
+}
 
 function renderStep3() {
   renderPendingChips();
   renderCalendar();
   renderAssignedList();
+  saveSession();
 }
 
 function getAssignedNumeros() {
-  return new Set(state.schedule.map(e => e.numero));
+  return new Set(
+    state.schedule.filter(e => e.contentType === "reel").map(e => e.numero)
+  );
 }
 
 function getPendingReels() {
@@ -295,14 +311,26 @@ function dateKey(date) {
   return `${y}-${m}-${d}`;
 }
 
+function keyToDate(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function entryLabel(entry) {
+  if (entry.contentType === "reel") return `REEL ${entry.numero} · ${entry.tema || ""}`;
+  if (entry.contentType === "imagen") return "Imagen";
+  if (entry.contentType === "carrusel") return `Carrusel (${(entry.imagenes || []).length} imágenes)`;
+  return "Contenido";
+}
+
 function renderPendingChips() {
   const pending = getPendingReels();
   if (pending.length === 0) {
     pendingReelsRow.innerHTML = `<span class="pending-empty">Todos los reels ya tienen fecha asignada.</span>`;
     return;
   }
-  pendingReelsRow.innerHTML = pending.map((r, i) =>
-    `<span class="pending-chip ${i === 0 ? "next" : ""}">REEL ${r.numero}${i === 0 ? " · siguiente" : ""}</span>`
+  pendingReelsRow.innerHTML = pending.map(r =>
+    `<span class="pending-chip">REEL ${r.numero} · ${escapeHtml(r.tema || "(sin tema)")}</span>`
   ).join("");
 }
 
@@ -332,27 +360,60 @@ function renderCalendar() {
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
     const key = dateKey(date);
-    const entries = byDate[key] || [];
+    const entries = (byDate[key] || []).slice().sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
     const isToday = date.getTime() === today.getTime();
 
-    const badges = entries.map(e =>
-      `<span class="cal-badge tipo-${e.tipo}" data-numero="${e.numero}" title="Quitar REEL ${e.numero}">${e.numero} ✕</span>`
-    ).join("");
+    const badges = entries.map(e => {
+      const label = e.contentType === "reel" ? `${CONTENT_ICONS.reel} ${e.numero}` : CONTENT_ICONS[e.contentType];
+      const tipoClass = e.contentType === "reel" ? `tipo-${e.tipo}` : `tipo-${e.contentType}`;
+      return `<span class="cal-badge ${tipoClass}" draggable="true" data-id="${e.id}" title="${escapeAttr(entryLabel(e))} · ${e.hora}">${label} ${e.hora}</span>`;
+    }).join("");
 
     html += `
       <div class="calendar-day ${isToday ? "today" : ""}" data-date="${key}">
-        <span class="cal-day-num">${day}</span>
+        <div class="cal-day-top">
+          <span class="cal-day-num">${day}</span>
+          <button type="button" class="cal-day-add" data-date="${key}" title="Agregar reel, imagen o carrusel">+</button>
+        </div>
         <div class="cal-day-badges">${badges}</div>
       </div>
     `;
   }
 
   calendarGrid.innerHTML = html;
+
+  calendarGrid.querySelectorAll(".cal-badge").forEach(badge => {
+    badge.addEventListener("dragstart", e => {
+      badge.classList.add("dragging");
+      e.dataTransfer.setData("text/plain", badge.dataset.id);
+      e.dataTransfer.effectAllowed = "move";
+    });
+    badge.addEventListener("dragend", () => badge.classList.remove("dragging"));
+  });
+
+  calendarGrid.querySelectorAll(".calendar-day").forEach(cell => {
+    if (cell.classList.contains("empty")) return;
+    cell.addEventListener("dragover", e => {
+      e.preventDefault();
+      cell.classList.add("drag-over");
+    });
+    cell.addEventListener("dragleave", () => cell.classList.remove("drag-over"));
+    cell.addEventListener("drop", e => {
+      e.preventDefault();
+      cell.classList.remove("drag-over");
+      const id = e.dataTransfer.getData("text/plain");
+      const entry = state.schedule.find(s => s.id === id);
+      if (entry) {
+        entry.fecha = keyToDate(cell.dataset.date);
+        renderStep3();
+      }
+    });
+  });
 }
 
 function renderAssignedList() {
   if (state.schedule.length === 0) {
-    assignedList.innerHTML = `<span class="assigned-empty">Aún no has asignado ningún reel. Da clic en una fecha del calendario.</span>`;
+    assignedList.innerHTML = `<span class="assigned-empty">Aún no has agregado nada. Da clic en una fecha del calendario.</span>`;
     return;
   }
 
@@ -363,59 +424,92 @@ function renderAssignedList() {
   });
 
   assignedList.innerHTML = sorted.map(entry => `
-    <div class="assigned-row" data-numero="${entry.numero}">
-      <span class="assigned-tag">REEL ${entry.numero}</span>
-      <span class="assigned-tema">${escapeHtml(entry.tema)}</span>
-      <span class="assigned-fecha">${formatDateEs(entry.fecha)}</span>
-      <input type="time" class="assigned-hora-input" value="${entry.hora}">
-      <button type="button" class="assigned-remove-btn" title="Quitar">✕</button>
+    <div class="assigned-row" data-id="${entry.id}">
+      ${entry.imagenes && entry.imagenes[0]
+        ? `<img class="assigned-thumb" src="${entry.imagenes[0]}">`
+        : `<span class="assigned-tag">${CONTENT_ICONS[entry.contentType] || "•"}</span>`}
+      <span class="assigned-tema">${escapeHtml(entryLabel(entry))}</span>
+      <span class="assigned-fecha">${formatDateEs(entry.fecha)} · ${entry.hora}</span>
+      <button type="button" class="assigned-remove-btn" title="Editar / eliminar">✏️</button>
     </div>
   `).join("");
 
   assignedList.querySelectorAll(".assigned-row").forEach(row => {
-    const numero = parseInt(row.dataset.numero, 10);
-
-    row.querySelector(".assigned-hora-input").addEventListener("change", e => {
-      const entry = state.schedule.find(s => s.numero === numero);
-      if (entry) entry.hora = e.target.value || "10:00";
-    });
-
-    row.querySelector(".assigned-remove-btn").addEventListener("click", () => {
-      removeAssignment(numero);
-    });
+    const id = row.dataset.id;
+    row.addEventListener("click", () => openEditEntryModal(id));
   });
 }
 
-function assignNextReel(date) {
-  const next = getPendingReels()[0];
-  if (!next) return;
+function addEntry(entry) {
+  state.schedule.push(entry);
+  renderStep3();
+}
 
-  const lastHora = state.schedule.length > 0 ? state.schedule[state.schedule.length - 1].hora : "10:00";
+function removeEntry(id) {
+  state.schedule = state.schedule.filter(e => e.id !== id);
+  renderStep3();
+}
 
-  state.schedule.push({
-    ...next,
-    fecha: date,
-    hora: lastHora
+// ---------- MENU EMERGENTE AL DAR CLIC EN UN DIA ----------
+function openDayMenu(key, x, y) {
+  const pending = getPendingReels();
+  dayMenu.innerHTML = `
+    <span class="day-menu-title">${escapeHtml(formatDateEs(keyToDate(key)))}</span>
+    <button type="button" class="day-menu-item" id="menuAssignReel" ${pending.length === 0 ? "disabled" : ""}>
+      🎬 Asignar reel pendiente ${pending.length ? `(${pending.length})` : ""}
+    </button>
+    <button type="button" class="day-menu-item" id="menuAddImagen">🖼 Agregar imagen</button>
+    <button type="button" class="day-menu-item" id="menuAddCarrusel">📚 Agregar carrusel</button>
+  `;
+  dayMenu.classList.remove("hidden");
+
+  const menuWidth = 240, menuHeight = 180;
+  const left = Math.max(12, Math.min(x, window.innerWidth - menuWidth - 12));
+  const top = Math.max(12, Math.min(y, window.innerHeight - menuHeight - 12));
+  dayMenu.style.left = `${left}px`;
+  dayMenu.style.top = `${top}px`;
+
+  document.getElementById("menuAssignReel").addEventListener("click", () => {
+    closeDayMenu();
+    if (pending.length > 0) openReelAssignModal(key);
   });
-
-  renderStep3();
+  document.getElementById("menuAddImagen").addEventListener("click", () => {
+    closeDayMenu();
+    openImagenModal(key);
+  });
+  document.getElementById("menuAddCarrusel").addEventListener("click", () => {
+    closeDayMenu();
+    openCarruselModal(key);
+  });
 }
 
-function removeAssignment(numero) {
-  state.schedule = state.schedule.filter(e => e.numero !== numero);
-  renderStep3();
+function closeDayMenu() {
+  dayMenu.classList.add("hidden");
 }
+
+document.addEventListener("click", e => {
+  if (!dayMenu.classList.contains("hidden") && !dayMenu.contains(e.target)) {
+    closeDayMenu();
+  }
+});
 
 calendarGrid.addEventListener("click", e => {
   const badge = e.target.closest(".cal-badge");
   if (badge) {
-    removeAssignment(parseInt(badge.dataset.numero, 10));
+    e.stopPropagation();
+    openEditEntryModal(badge.dataset.id);
+    return;
+  }
+  const addBtn = e.target.closest(".cal-day-add");
+  if (addBtn) {
+    e.stopPropagation();
+    openDayMenu(addBtn.dataset.date, e.clientX, e.clientY);
     return;
   }
   const dayCell = e.target.closest(".calendar-day");
   if (dayCell && !dayCell.classList.contains("empty")) {
-    const [y, m, d] = dayCell.dataset.date.split("-").map(Number);
-    assignNextReel(new Date(y, m - 1, d));
+    e.stopPropagation();
+    openDayMenu(dayCell.dataset.date, e.clientX, e.clientY);
   }
 });
 
@@ -423,12 +517,14 @@ calPrevBtn.addEventListener("click", () => {
   state.calendarMonth--;
   if (state.calendarMonth < 0) { state.calendarMonth = 11; state.calendarYear--; }
   renderCalendar();
+  saveSession();
 });
 
 calNextBtn.addEventListener("click", () => {
   state.calendarMonth++;
   if (state.calendarMonth > 11) { state.calendarMonth = 0; state.calendarYear++; }
   renderCalendar();
+  saveSession();
 });
 
 backTo2Btn.addEventListener("click", () => showStep(2));
@@ -439,23 +535,336 @@ generateBtn.addEventListener("click", () => {
   state.cliente = clienteInput.value.trim() || "Cliente Bravo";
 
   if (state.schedule.length === 0) {
-    step3Error.textContent = "Asigna al menos un reel en el calendario antes de continuar.";
+    step3Error.textContent = "Agrega al menos un reel, imagen o carrusel en el calendario antes de continuar.";
     step3Error.classList.remove("hidden");
     return;
   }
-  if (state.schedule.length < state.reels.length) {
+  const reelsAgendados = state.schedule.filter(e => e.contentType === "reel").length;
+  if (reelsAgendados < state.reels.length) {
     const pendientes = getPendingReels().map(r => r.numero).join(", ");
-    step3Error.textContent = `Aún tienes reels sin fecha: REEL ${pendientes}. Asígnalos en el calendario o regresa a editarlos.`;
+    step3Error.textContent = `Aún tienes reels sin fecha: REEL ${pendientes}. Agrégalos en el calendario antes de continuar.`;
     step3Error.classList.remove("hidden");
     return;
   }
 
   const sorted = [...state.schedule].sort((a, b) => a.fecha - b.fecha);
   document.getElementById("deliverySummary").textContent =
-    `${state.reels.length} reels programados del ${formatDateEs(sorted[0].fecha)} al ${formatDateEs(sorted[sorted.length - 1].fecha)} para ${state.cliente}.`;
+    `${state.schedule.length} publicación(es) programadas del ${formatDateEs(sorted[0].fecha)} al ${formatDateEs(sorted[sorted.length - 1].fecha)} para ${state.cliente}.`;
 
+  saveSession();
   showStep(4);
 });
+
+// ---------- MODAL GENERICO ----------
+function showModal(html) {
+  modalBox.innerHTML = html;
+  modalOverlay.classList.remove("hidden");
+}
+function closeModal() {
+  modalOverlay.classList.add("hidden");
+  modalBox.innerHTML = "";
+}
+modalOverlay.addEventListener("click", e => {
+  if (e.target === modalOverlay) closeModal();
+});
+
+function lastHoraUsada() {
+  if (state.schedule.length === 0) return "10:00";
+  const sorted = [...state.schedule].sort((a, b) => b.fecha - a.fecha);
+  return sorted[0].hora || "10:00";
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---------- ASIGNAR REEL PENDIENTE ----------
+function openReelAssignModal(key) {
+  const pending = getPendingReels();
+  showModal(`
+    <h2>Asignar reel — ${escapeHtml(formatDateEs(keyToDate(key)))}</h2>
+    <div class="modal-error hidden" id="reelModalError"></div>
+    <div class="modal-field">
+      <label>Reel pendiente</label>
+      <select id="reelSelect">
+        ${pending.map(r => `<option value="${r.numero}">REEL ${r.numero} · ${escapeHtml(r.tema || "(sin tema)")}</option>`).join("")}
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Hora de publicación</label>
+      <input type="time" id="reelHoraInput" value="${lastHoraUsada()}">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="reelModalCancel">Cancelar</button>
+      <button type="button" class="btn-primary" id="reelModalSave">Agregar al calendario</button>
+    </div>
+  `);
+
+  document.getElementById("reelModalCancel").addEventListener("click", closeModal);
+  document.getElementById("reelModalSave").addEventListener("click", () => {
+    const numero = parseInt(document.getElementById("reelSelect").value, 10);
+    const hora = document.getElementById("reelHoraInput").value || "10:00";
+    const reel = state.reels.find(r => r.numero === numero);
+    if (!reel) return;
+
+    addEntry({
+      id: uid(),
+      contentType: "reel",
+      numero: reel.numero,
+      tema: reel.tema,
+      copyout: reel.copyout,
+      tipo: reel.tipo,
+      fecha: keyToDate(key),
+      hora
+    });
+    closeModal();
+  });
+}
+
+// ---------- AGREGAR IMAGEN ----------
+function openImagenModal(key) {
+  showModal(`
+    <h2>Agregar imagen — ${escapeHtml(formatDateEs(keyToDate(key)))}</h2>
+    <div class="modal-error hidden" id="imgModalError"></div>
+    <div class="modal-field">
+      <label>Subir imagen</label>
+      <input type="file" id="imgFileInput" accept="image/*">
+      <div class="modal-thumbs" id="imgThumbs"></div>
+    </div>
+    <div class="modal-field">
+      <label>Copy out</label>
+      <textarea id="imgCopyInput" placeholder="Pega aquí el copy out de esta imagen..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label>Hora de publicación</label>
+      <input type="time" id="imgHoraInput" value="${lastHoraUsada()}">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="imgModalCancel">Cancelar</button>
+      <button type="button" class="btn-primary" id="imgModalSave">Agregar al calendario</button>
+    </div>
+  `);
+
+  const fileInputEl = document.getElementById("imgFileInput");
+  const thumbsEl = document.getElementById("imgThumbs");
+  fileInputEl.addEventListener("change", async () => {
+    thumbsEl.innerHTML = "";
+    const file = fileInputEl.files[0];
+    if (!file) return;
+    thumbsEl.innerHTML = `<img class="modal-thumb" src="${await fileToDataURL(file)}">`;
+  });
+
+  document.getElementById("imgModalCancel").addEventListener("click", closeModal);
+  document.getElementById("imgModalSave").addEventListener("click", async () => {
+    const errorEl = document.getElementById("imgModalError");
+    const file = fileInputEl.files[0];
+    const copyout = document.getElementById("imgCopyInput").value.trim();
+    const hora = document.getElementById("imgHoraInput").value || "10:00";
+
+    if (!file) {
+      errorEl.textContent = "Sube una imagen antes de continuar.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    const dataUrl = await fileToDataURL(file);
+    addEntry({
+      id: uid(),
+      contentType: "imagen",
+      fecha: keyToDate(key),
+      hora,
+      copyout,
+      imagenes: [dataUrl]
+    });
+    closeModal();
+  });
+}
+
+// ---------- AGREGAR CARRUSEL ----------
+function openCarruselModal(key) {
+  showModal(`
+    <h2>Agregar carrusel — ${escapeHtml(formatDateEs(keyToDate(key)))}</h2>
+    <div class="modal-error hidden" id="carModalError"></div>
+    <div class="modal-field">
+      <label>Subir imágenes (puedes elegir varias)</label>
+      <input type="file" id="carFileInput" accept="image/*" multiple>
+      <div class="modal-thumbs" id="carThumbs"></div>
+    </div>
+    <div class="modal-field">
+      <label>Copy out</label>
+      <textarea id="carCopyInput" placeholder="Pega aquí el copy out de este carrusel..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label>Hora de publicación</label>
+      <input type="time" id="carHoraInput" value="${lastHoraUsada()}">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="carModalCancel">Cancelar</button>
+      <button type="button" class="btn-primary" id="carModalSave">Agregar al calendario</button>
+    </div>
+  `);
+
+  const fileInputEl = document.getElementById("carFileInput");
+  const thumbsEl = document.getElementById("carThumbs");
+  fileInputEl.addEventListener("change", async () => {
+    thumbsEl.innerHTML = "";
+    const files = Array.from(fileInputEl.files || []);
+    for (const file of files) {
+      thumbsEl.insertAdjacentHTML("beforeend", `<img class="modal-thumb" src="${await fileToDataURL(file)}">`);
+    }
+  });
+
+  document.getElementById("carModalCancel").addEventListener("click", closeModal);
+  document.getElementById("carModalSave").addEventListener("click", async () => {
+    const errorEl = document.getElementById("carModalError");
+    const files = Array.from(fileInputEl.files || []);
+    const copyout = document.getElementById("carCopyInput").value.trim();
+    const hora = document.getElementById("carHoraInput").value || "10:00";
+
+    if (files.length === 0) {
+      errorEl.textContent = "Sube al menos una imagen antes de continuar.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    const imagenes = [];
+    for (const file of files) imagenes.push(await fileToDataURL(file));
+
+    addEntry({
+      id: uid(),
+      contentType: "carrusel",
+      fecha: keyToDate(key),
+      hora,
+      copyout,
+      imagenes
+    });
+    closeModal();
+  });
+}
+
+// ---------- EDITAR / ELIMINAR UNA TARJETA YA PROGRAMADA ----------
+function openEditEntryModal(id) {
+  const entry = state.schedule.find(e => e.id === id);
+  if (!entry) return;
+
+  let bodyExtra = "";
+  if (entry.contentType === "reel") {
+    bodyExtra = `
+      <div class="modal-field">
+        <label>Tema (REEL ${entry.numero})</label>
+        <input type="text" id="editTemaInput" value="${escapeAttr(entry.tema || "")}" readonly>
+      </div>
+      <div class="modal-field">
+        <label>Copy out</label>
+        <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
+      </div>
+    `;
+  } else {
+    const thumbs = (entry.imagenes || []).map(src => `<img class="modal-thumb" src="${src}">`).join("");
+    bodyExtra = `
+      <div class="modal-field">
+        <label>Imágenes actuales</label>
+        <div class="modal-thumbs">${thumbs}</div>
+        <label style="margin-top:10px;">Reemplazar imagen${entry.contentType === "carrusel" ? "es" : ""} (opcional)</label>
+        <input type="file" id="editFileInput" accept="image/*" ${entry.contentType === "carrusel" ? "multiple" : ""}>
+      </div>
+      <div class="modal-field">
+        <label>Copy out</label>
+        <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
+      </div>
+    `;
+  }
+
+  showModal(`
+    <h2>${escapeHtml(entryLabel(entry))}</h2>
+    <p class="hint" style="margin-bottom:14px;">${escapeHtml(formatDateEs(entry.fecha))}</p>
+    ${bodyExtra}
+    <div class="modal-field">
+      <label>Hora de publicación</label>
+      <input type="time" id="editHoraInput" value="${entry.hora}">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="editDeleteBtn" style="color:#ff8a8a;">🗑 Eliminar</button>
+      <button type="button" class="btn-primary" id="editSaveBtn">Guardar</button>
+    </div>
+  `);
+
+  document.getElementById("editDeleteBtn").addEventListener("click", () => {
+    closeModal();
+    removeEntry(id);
+  });
+
+  document.getElementById("editSaveBtn").addEventListener("click", async () => {
+    entry.hora = document.getElementById("editHoraInput").value || entry.hora;
+    entry.copyout = document.getElementById("editCopyInput").value;
+
+    const fileInputEl = document.getElementById("editFileInput");
+    if (fileInputEl && fileInputEl.files && fileInputEl.files.length > 0) {
+      const files = Array.from(fileInputEl.files);
+      const imagenes = [];
+      for (const file of files) imagenes.push(await fileToDataURL(file));
+      entry.imagenes = imagenes;
+    }
+
+    closeModal();
+    renderStep3();
+  });
+}
+
+// ---------- GUARDADO AUTOMATICO (no se pierde el avance si recargas) ----------
+const SESSION_KEY = "bravoReelsSession";
+
+function saveSession() {
+  try {
+    const payload = {
+      currentStep: currentStepNum,
+      rawText: state.rawText,
+      reels: state.reels,
+      cliente: state.cliente,
+      calendarYear: state.calendarYear,
+      calendarMonth: state.calendarMonth,
+      schedule: state.schedule.map(e => ({ ...e, fecha: e.fecha.toISOString() }))
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn("No se pudo guardar el avance local (puede ser por el tamaño de las imágenes):", err);
+  }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (err) { /* noop */ }
+}
+
+function loadSession() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    saved = JSON.parse(raw);
+  } catch (err) {
+    return;
+  }
+  if (!saved || !saved.reels || saved.reels.length === 0) return;
+
+  state.rawText = saved.rawText || "";
+  state.reels = saved.reels;
+  state.cliente = saved.cliente || "";
+  state.calendarYear = saved.calendarYear ?? new Date().getFullYear();
+  state.calendarMonth = saved.calendarMonth ?? new Date().getMonth();
+  state.schedule = (saved.schedule || []).map(e => ({ ...e, fecha: new Date(e.fecha) }));
+
+  clienteInput.value = state.cliente;
+  renderReelsList();
+
+  const step = Math.min(saved.currentStep || 2, 4);
+  if (step >= 3) renderStep3();
+  showStep(step);
+}
 
 function formatDateEs(date) {
   return `${DIA_NOMBRES[date.getDay()].slice(0, 3)} ${date.getDate()} de ${MES_NOMBRES[date.getMonth()]}`;
@@ -483,6 +892,7 @@ function restartApp() {
   state.schedule = [];
   state.calendarYear = new Date().getFullYear();
   state.calendarMonth = new Date().getMonth();
+  clearSession();
   showStep(1);
 }
 
@@ -635,14 +1045,23 @@ function buildCalendarHTML() {
         </div>
       </div>
       <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
-        ${day.items.map(item => `
-          <div style="background:#141414; border:1px solid #2A2A2A; border-left:3px solid ${item.tipo === "venta" ? "#FF0000" : "#5A5A5A"}; border-radius:5px; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px;">
+        ${day.items.map(item => {
+          const esReel = item.contentType === "reel";
+          const colorBorde = esReel ? (item.tipo === "venta" ? "#FF0000" : "#5A5A5A") : "#5A5A5A";
+          const colorTag = esReel ? (item.tipo === "venta" ? "#FF0000" : "#8A8A8A") : "#8A8A8A";
+          const etiqueta = esReel
+            ? `REEL ${item.numero} · ${item.hora} · ${(item.tipo || "valor").toUpperCase()}`
+            : `${item.contentType === "imagen" ? "IMAGEN" : "CARRUSEL"} · ${item.hora}`;
+          const titulo = esReel ? escapeHtml(item.tema) : entryLabel(item);
+          return `
+          <div style="background:#141414; border:1px solid #2A2A2A; border-left:3px solid ${colorBorde}; border-radius:5px; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px;">
             <div>
-              <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:${item.tipo === "venta" ? "#FF0000" : "#8A8A8A"}; letter-spacing:1px; margin-bottom:4px;">REEL ${item.numero} · ${item.hora} · ${(item.tipo || "valor").toUpperCase()}</div>
-              <div style="font-family:'Inter',sans-serif; font-size:15px; color:#F5F5F5; font-weight:600;">${escapeHtml(item.tema)}</div>
+              <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:${colorTag}; letter-spacing:1px; margin-bottom:4px;">${etiqueta}</div>
+              <div style="font-family:'Inter',sans-serif; font-size:15px; color:#F5F5F5; font-weight:600;">${escapeHtml(titulo)}</div>
             </div>
           </div>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     </div>
   `).join("");
@@ -672,3 +1091,8 @@ function slugify(str) {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
+
+// ============================================================
+// AL CARGAR LA PAGINA: intentar recuperar el progreso guardado
+// ============================================================
+loadSession();
