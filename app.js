@@ -1,10 +1,6 @@
 // ============================================================
 // CONFIGURACIÓN
 // ============================================================
-// 1. Esta ya es la URL real de tu Worker en Cloudflare.
-//    Si alguna vez creas un Worker nuevo, cámbiala aquí.
-const WORKER_URL = "https://bravo-reels-worker.modebonilla.workers.dev";
-
 const DIA_NOMBRES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MES_NOMBRES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
@@ -12,12 +8,10 @@ const MES_NOMBRES = ["enero","febrero","marzo","abril","mayo","junio","julio","a
 // ESTADO
 // ============================================================
 const state = {
-  rawText: "",
-  reels: [],        // [{ numero, tipo, tema, copyout }]
   cliente: "",
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
-  schedule: []       // [{ id, contentType: 'reel'|'imagen'|'carrusel', fecha: Date, hora, copyout, ... }]
+  schedule: []       // [{ id, contentType: 'reel'|'imagen'|'carrusel', tema, fecha: Date, hora, copyout, imagenes? }]
 };
 
 let currentStepNum = 1;
@@ -39,223 +33,8 @@ function showStep(n) {
 }
 
 // ============================================================
-// PASO 1 — CARGA DE ARCHIVO O TEXTO
+// UTILIDADES DE ESCAPE
 // ============================================================
-const dropzone = document.getElementById("dropzone");
-const fileInput = document.getElementById("fileInput");
-const browseBtn = document.getElementById("browseBtn");
-const fileNameDisplay = document.getElementById("fileNameDisplay");
-const rawTextInput = document.getElementById("rawTextInput");
-const processBtn = document.getElementById("processBtn");
-const step1Error = document.getElementById("step1Error");
-
-let loadedFile = null;
-
-browseBtn.addEventListener("click", () => fileInput.click());
-
-fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) handleFile(fileInput.files[0]);
-});
-
-["dragover", "dragenter"].forEach(evt =>
-  dropzone.addEventListener(evt, e => {
-    e.preventDefault();
-    dropzone.classList.add("dragover");
-  })
-);
-["dragleave", "drop"].forEach(evt =>
-  dropzone.addEventListener(evt, e => {
-    e.preventDefault();
-    dropzone.classList.remove("dragover");
-  })
-);
-dropzone.addEventListener("drop", e => {
-  const file = e.dataTransfer.files[0];
-  if (file) handleFile(file);
-});
-
-function handleFile(file) {
-  loadedFile = file;
-  fileNameDisplay.textContent = `Archivo cargado: ${file.name}`;
-}
-
-function showStep1Error(msg) {
-  step1Error.textContent = msg;
-  step1Error.classList.remove("hidden");
-}
-function clearStep1Error() {
-  step1Error.classList.add("hidden");
-}
-
-async function extractTextFromFile(file) {
-  const ext = file.name.split(".").pop().toLowerCase();
-
-  if (ext === "txt") {
-    return await file.text();
-  }
-
-  if (ext === "pdf") {
-    const buffer = await file.arrayBuffer();
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map(it => it.str).join(" ") + "\n";
-    }
-    return text;
-  }
-
-  if (ext === "docx") {
-    const buffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-    return result.value;
-  }
-
-  throw new Error("Formato de archivo no soportado.");
-}
-
-processBtn.addEventListener("click", async () => {
-  clearStep1Error();
-
-  let text = rawTextInput.value.trim();
-
-  try {
-    if (loadedFile) {
-      processBtn.disabled = true;
-      processBtn.textContent = "Leyendo archivo...";
-      text = (await extractTextFromFile(loadedFile)).trim();
-    }
-
-    if (!text) {
-      showStep1Error("Sube un archivo o pega el texto de tus guiones antes de continuar.");
-      resetProcessBtn();
-      return;
-    }
-
-    state.rawText = text;
-    processBtn.textContent = "Analizando guiones con IA...";
-
-    const data = await callWorker(text);
-    state.reels = data.reels.map((r, i) => ({
-      numero: r.numero || i + 1,
-      tipo: (r.tipo === "venta" || r.tipo === "valor") ? r.tipo : "valor",
-      tema: r.tema || "",
-      copyout: r.copyout || ""
-    }));
-
-    renderReelsList();
-    showStep(2);
-    saveSession();
-  } catch (err) {
-    console.error(err);
-    showStep1Error(`Ocurrió un error: ${err.message}. Intenta de nuevo.`);
-  } finally {
-    resetProcessBtn();
-  }
-});
-
-function resetProcessBtn() {
-  processBtn.disabled = false;
-  processBtn.textContent = "Identificar guiones y generar copyouts →";
-}
-
-async function callWorker(text) {
-  const res = await fetch(WORKER_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text })
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`El worker respondió con error (${res.status}). ${errText}`);
-  }
-
-  const data = await res.json();
-  if (!data.reels || !Array.isArray(data.reels) || data.reels.length === 0) {
-    throw new Error("La IA no devolvió guiones identificables. Revisa el formato del texto.");
-  }
-  return data;
-}
-
-// ============================================================
-// PASO 2 — REVISIÓN DE COPYOUTS
-// ============================================================
-const reelsList = document.getElementById("reelsList");
-const reelCountHint = document.getElementById("reelCountHint");
-const backTo1Btn = document.getElementById("backTo1Btn");
-const continueTo3Btn = document.getElementById("continueTo3Btn");
-
-function renderReelsList() {
-  reelsList.innerHTML = "";
-  reelCountHint.textContent = `Se identificaron ${state.reels.length} guion(es). Ajusta tema o copy si lo necesitas.`;
-
-  state.reels.forEach((reel, i) => {
-    const card = document.createElement("div");
-    card.className = "reel-card";
-    card.dataset.index = i;
-    card.innerHTML = `
-      <div class="reel-card-head">
-        <span class="reel-tag">REEL ${reel.numero}</span>
-        <div class="reel-card-head-actions">
-          <button type="button" class="copy-btn" title="Copiar copyout">📋 Copiar</button>
-          <select class="reel-tipo-input tipo-${reel.tipo}">
-            <option value="venta" ${reel.tipo === "venta" ? "selected" : ""}>VENTA</option>
-            <option value="valor" ${reel.tipo === "valor" ? "selected" : ""}>VALOR</option>
-          </select>
-        </div>
-      </div>
-      <label>Tema</label>
-      <input class="reel-tema-input" value="${escapeAttr(reel.tema)}">
-      <label>Copyout</label>
-      <textarea class="reel-copy-input">${escapeHtml(reel.copyout)}</textarea>
-    `;
-    reelsList.appendChild(card);
-
-    const tipoSelect = card.querySelector(".reel-tipo-input");
-    tipoSelect.addEventListener("change", () => {
-      tipoSelect.classList.remove("tipo-venta", "tipo-valor");
-      tipoSelect.classList.add(`tipo-${tipoSelect.value}`);
-    });
-
-    const copyBtn = card.querySelector(".copy-btn");
-    copyBtn.addEventListener("click", () => {
-      const text = card.querySelector(".reel-copy-input").value;
-      navigator.clipboard.writeText(text).then(() => {
-        const original = copyBtn.textContent;
-        copyBtn.textContent = "✅ Copiado";
-        setTimeout(() => { copyBtn.textContent = original; }, 1500);
-      });
-    });
-  });
-}
-
-function syncReelsFromDOM() {
-  document.querySelectorAll(".reel-card").forEach(card => {
-    const i = parseInt(card.dataset.index, 10);
-    state.reels[i].tema = card.querySelector(".reel-tema-input").value;
-    state.reels[i].copyout = card.querySelector(".reel-copy-input").value;
-    state.reels[i].tipo = card.querySelector(".reel-tipo-input").value;
-  });
-}
-
-backTo1Btn.addEventListener("click", () => showStep(1));
-
-const downloadTxtStep2Btn = document.getElementById("downloadTxtStep2Btn");
-downloadTxtStep2Btn.addEventListener("click", () => {
-  syncReelsFromDOM();
-  generateCopyoutsTXT();
-});
-
-continueTo3Btn.addEventListener("click", () => {
-  syncReelsFromDOM();
-  renderStep3();
-  showStep(3);
-});
-
 function escapeHtml(str) {
   return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -264,16 +43,14 @@ function escapeAttr(str) {
 }
 
 // ============================================================
-// PASO 3 — PROGRAMACIÓN (calendario + reel pendiente + imagen + carrusel)
+// CALENDARIO — PROGRAMACIÓN MANUAL (reel + imagen + carrusel)
 // ============================================================
 const clienteInput = document.getElementById("clienteInput");
-const pendingReelsRow = document.getElementById("pendingReelsRow");
 const calMonthLabel = document.getElementById("calMonthLabel");
 const calendarGrid = document.getElementById("calendarGrid");
 const assignedList = document.getElementById("assignedList");
 const calPrevBtn = document.getElementById("calPrevBtn");
 const calNextBtn = document.getElementById("calNextBtn");
-const backTo2Btn = document.getElementById("backTo2Btn");
 const generateBtn = document.getElementById("generateBtn");
 const step3Error = document.getElementById("step3Error");
 const dayMenu = document.getElementById("dayMenu");
@@ -287,21 +64,9 @@ function uid() {
 }
 
 function renderStep3() {
-  renderPendingChips();
   renderCalendar();
   renderAssignedList();
   saveSession();
-}
-
-function getAssignedNumeros() {
-  return new Set(
-    state.schedule.filter(e => e.contentType === "reel").map(e => e.numero)
-  );
-}
-
-function getPendingReels() {
-  const assigned = getAssignedNumeros();
-  return state.reels.filter(r => !assigned.has(r.numero));
 }
 
 function dateKey(date) {
@@ -316,22 +81,16 @@ function keyToDate(key) {
   return new Date(y, m - 1, d);
 }
 
-function entryLabel(entry) {
-  if (entry.contentType === "reel") return `REEL ${entry.numero} · ${entry.tema || ""}`;
-  if (entry.contentType === "imagen") return "Imagen";
-  if (entry.contentType === "carrusel") return `Carrusel (${(entry.imagenes || []).length} imágenes)`;
-  return "Contenido";
+function truncate(str, n) {
+  const s = str || "";
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-function renderPendingChips() {
-  const pending = getPendingReels();
-  if (pending.length === 0) {
-    pendingReelsRow.innerHTML = `<span class="pending-empty">Todos los reels ya tienen fecha asignada.</span>`;
-    return;
-  }
-  pendingReelsRow.innerHTML = pending.map(r =>
-    `<span class="pending-chip">REEL ${r.numero} · ${escapeHtml(r.tema || "(sin tema)")}</span>`
-  ).join("");
+function entryLabel(entry) {
+  if (entry.contentType === "reel") return entry.tema || "Reel";
+  if (entry.contentType === "imagen") return entry.tema || "Imagen";
+  if (entry.contentType === "carrusel") return entry.tema || `Carrusel (${(entry.imagenes || []).length} imágenes)`;
+  return "Contenido";
 }
 
 function renderCalendar() {
@@ -364,9 +123,10 @@ function renderCalendar() {
     const isToday = date.getTime() === today.getTime();
 
     const badges = entries.map(e => {
-      const label = e.contentType === "reel" ? `${CONTENT_ICONS.reel} ${e.numero}` : CONTENT_ICONS[e.contentType];
-      const tipoClass = e.contentType === "reel" ? `tipo-${e.tipo}` : `tipo-${e.contentType}`;
-      return `<span class="cal-badge ${tipoClass}" draggable="true" data-id="${e.id}" title="${escapeAttr(entryLabel(e))} · ${e.hora}">${label} ${e.hora}</span>`;
+      const icon = CONTENT_ICONS[e.contentType] || "•";
+      const label = `${icon} ${truncate(e.tema, 14)}`;
+      const tipoClass = e.contentType === "reel" ? "tipo-reel" : `tipo-${e.contentType}`;
+      return `<span class="cal-badge ${tipoClass}" draggable="true" data-id="${e.id}" title="${escapeAttr(entryLabel(e))} · ${e.hora}">${label} · ${e.hora}</span>`;
     }).join("");
 
     html += `
@@ -452,12 +212,9 @@ function removeEntry(id) {
 
 // ---------- MENU EMERGENTE AL DAR CLIC EN UN DIA ----------
 function openDayMenu(key, x, y) {
-  const pending = getPendingReels();
   dayMenu.innerHTML = `
     <span class="day-menu-title">${escapeHtml(formatDateEs(keyToDate(key)))}</span>
-    <button type="button" class="day-menu-item" id="menuAssignReel" ${pending.length === 0 ? "disabled" : ""}>
-      🎬 Asignar reel pendiente ${pending.length ? `(${pending.length})` : ""}
-    </button>
+    <button type="button" class="day-menu-item" id="menuAddReel">🎬 Agregar reel</button>
     <button type="button" class="day-menu-item" id="menuAddImagen">🖼 Agregar imagen</button>
     <button type="button" class="day-menu-item" id="menuAddCarrusel">📚 Agregar carrusel</button>
   `;
@@ -469,9 +226,9 @@ function openDayMenu(key, x, y) {
   dayMenu.style.left = `${left}px`;
   dayMenu.style.top = `${top}px`;
 
-  document.getElementById("menuAssignReel").addEventListener("click", () => {
+  document.getElementById("menuAddReel").addEventListener("click", () => {
     closeDayMenu();
-    if (pending.length > 0) openReelAssignModal(key);
+    openReelModal(key);
   });
   document.getElementById("menuAddImagen").addEventListener("click", () => {
     closeDayMenu();
@@ -527,8 +284,6 @@ calNextBtn.addEventListener("click", () => {
   saveSession();
 });
 
-backTo2Btn.addEventListener("click", () => showStep(2));
-
 generateBtn.addEventListener("click", () => {
   step3Error.classList.add("hidden");
 
@@ -539,20 +294,13 @@ generateBtn.addEventListener("click", () => {
     step3Error.classList.remove("hidden");
     return;
   }
-  const reelsAgendados = state.schedule.filter(e => e.contentType === "reel").length;
-  if (reelsAgendados < state.reels.length) {
-    const pendientes = getPendingReels().map(r => r.numero).join(", ");
-    step3Error.textContent = `Aún tienes reels sin fecha: REEL ${pendientes}. Agrégalos en el calendario antes de continuar.`;
-    step3Error.classList.remove("hidden");
-    return;
-  }
 
   const sorted = [...state.schedule].sort((a, b) => a.fecha - b.fecha);
   document.getElementById("deliverySummary").textContent =
     `${state.schedule.length} publicación(es) programadas del ${formatDateEs(sorted[0].fecha)} al ${formatDateEs(sorted[sorted.length - 1].fecha)} para ${state.cliente}.`;
 
   saveSession();
-  showStep(4);
+  showStep(2);
 });
 
 // ---------- MODAL GENERICO ----------
@@ -583,17 +331,18 @@ function fileToDataURL(file) {
   });
 }
 
-// ---------- ASIGNAR REEL PENDIENTE ----------
-function openReelAssignModal(key) {
-  const pending = getPendingReels();
+// ---------- AGREGAR REEL ----------
+function openReelModal(key) {
   showModal(`
-    <h2>Asignar reel — ${escapeHtml(formatDateEs(keyToDate(key)))}</h2>
+    <h2>Agregar reel — ${escapeHtml(formatDateEs(keyToDate(key)))}</h2>
     <div class="modal-error hidden" id="reelModalError"></div>
     <div class="modal-field">
-      <label>Reel pendiente</label>
-      <select id="reelSelect">
-        ${pending.map(r => `<option value="${r.numero}">REEL ${r.numero} · ${escapeHtml(r.tema || "(sin tema)")}</option>`).join("")}
-      </select>
+      <label>Tema del reel</label>
+      <input type="text" id="reelTemaInput" placeholder="Ej. Protector solar según tu tipo de piel">
+    </div>
+    <div class="modal-field">
+      <label>Copy out</label>
+      <textarea id="reelCopyInput" placeholder="Pega aquí el copy out de este reel..."></textarea>
     </div>
     <div class="modal-field">
       <label>Hora de publicación</label>
@@ -607,18 +356,22 @@ function openReelAssignModal(key) {
 
   document.getElementById("reelModalCancel").addEventListener("click", closeModal);
   document.getElementById("reelModalSave").addEventListener("click", () => {
-    const numero = parseInt(document.getElementById("reelSelect").value, 10);
+    const errorEl = document.getElementById("reelModalError");
+    const tema = document.getElementById("reelTemaInput").value.trim();
+    const copyout = document.getElementById("reelCopyInput").value.trim();
     const hora = document.getElementById("reelHoraInput").value || "10:00";
-    const reel = state.reels.find(r => r.numero === numero);
-    if (!reel) return;
+
+    if (!tema) {
+      errorEl.textContent = "Escribe el tema del reel antes de continuar.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
 
     addEntry({
       id: uid(),
       contentType: "reel",
-      numero: reel.numero,
-      tema: reel.tema,
-      copyout: reel.copyout,
-      tipo: reel.tipo,
+      tema,
+      copyout,
       fecha: keyToDate(key),
       hora
     });
@@ -635,6 +388,10 @@ function openImagenModal(key) {
       <label>Subir imagen</label>
       <input type="file" id="imgFileInput" accept="image/*">
       <div class="modal-thumbs" id="imgThumbs"></div>
+    </div>
+    <div class="modal-field">
+      <label>Tema</label>
+      <input type="text" id="imgTemaInput" placeholder="Ej. Protector solar según tu tipo de piel">
     </div>
     <div class="modal-field">
       <label>Copy out</label>
@@ -663,11 +420,17 @@ function openImagenModal(key) {
   document.getElementById("imgModalSave").addEventListener("click", async () => {
     const errorEl = document.getElementById("imgModalError");
     const file = fileInputEl.files[0];
+    const tema = document.getElementById("imgTemaInput").value.trim();
     const copyout = document.getElementById("imgCopyInput").value.trim();
     const hora = document.getElementById("imgHoraInput").value || "10:00";
 
     if (!file) {
       errorEl.textContent = "Sube una imagen antes de continuar.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+    if (!tema) {
+      errorEl.textContent = "Escribe el tema de la imagen antes de continuar.";
       errorEl.classList.remove("hidden");
       return;
     }
@@ -678,6 +441,7 @@ function openImagenModal(key) {
       contentType: "imagen",
       fecha: keyToDate(key),
       hora,
+      tema,
       copyout,
       imagenes: [dataUrl]
     });
@@ -694,6 +458,10 @@ function openCarruselModal(key) {
       <label>Subir imágenes (puedes elegir varias)</label>
       <input type="file" id="carFileInput" accept="image/*" multiple>
       <div class="modal-thumbs" id="carThumbs"></div>
+    </div>
+    <div class="modal-field">
+      <label>Tema</label>
+      <input type="text" id="carTemaInput" placeholder="Ej. 5 errores que te cuestan ventas">
     </div>
     <div class="modal-field">
       <label>Copy out</label>
@@ -723,11 +491,17 @@ function openCarruselModal(key) {
   document.getElementById("carModalSave").addEventListener("click", async () => {
     const errorEl = document.getElementById("carModalError");
     const files = Array.from(fileInputEl.files || []);
+    const tema = document.getElementById("carTemaInput").value.trim();
     const copyout = document.getElementById("carCopyInput").value.trim();
     const hora = document.getElementById("carHoraInput").value || "10:00";
 
     if (files.length === 0) {
       errorEl.textContent = "Sube al menos una imagen antes de continuar.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+    if (!tema) {
+      errorEl.textContent = "Escribe el tema del carrusel antes de continuar.";
       errorEl.classList.remove("hidden");
       return;
     }
@@ -740,6 +514,7 @@ function openCarruselModal(key) {
       contentType: "carrusel",
       fecha: keyToDate(key),
       hora,
+      tema,
       copyout,
       imagenes
     });
@@ -752,13 +527,17 @@ function openEditEntryModal(id) {
   const entry = state.schedule.find(e => e.id === id);
   if (!entry) return;
 
+  const temaField = `
+    <div class="modal-field">
+      <label>Tema</label>
+      <input type="text" id="editTemaInput" value="${escapeAttr(entry.tema || "")}">
+    </div>
+  `;
+
   let bodyExtra = "";
   if (entry.contentType === "reel") {
     bodyExtra = `
-      <div class="modal-field">
-        <label>Tema (REEL ${entry.numero})</label>
-        <input type="text" id="editTemaInput" value="${escapeAttr(entry.tema || "")}" readonly>
-      </div>
+      ${temaField}
       <div class="modal-field">
         <label>Copy out</label>
         <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
@@ -773,6 +552,7 @@ function openEditEntryModal(id) {
         <label style="margin-top:10px;">Reemplazar imagen${entry.contentType === "carrusel" ? "es" : ""} (opcional)</label>
         <input type="file" id="editFileInput" accept="image/*" ${entry.contentType === "carrusel" ? "multiple" : ""}>
       </div>
+      ${temaField}
       <div class="modal-field">
         <label>Copy out</label>
         <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
@@ -801,6 +581,7 @@ function openEditEntryModal(id) {
 
   document.getElementById("editSaveBtn").addEventListener("click", async () => {
     entry.hora = document.getElementById("editHoraInput").value || entry.hora;
+    entry.tema = document.getElementById("editTemaInput").value.trim();
     entry.copyout = document.getElementById("editCopyInput").value;
 
     const fileInputEl = document.getElementById("editFileInput");
@@ -823,8 +604,6 @@ function saveSession() {
   try {
     const payload = {
       currentStep: currentStepNum,
-      rawText: state.rawText,
-      reels: state.reels,
       cliente: state.cliente,
       calendarYear: state.calendarYear,
       calendarMonth: state.calendarMonth,
@@ -849,20 +628,16 @@ function loadSession() {
   } catch (err) {
     return;
   }
-  if (!saved || !saved.reels || saved.reels.length === 0) return;
+  if (!saved || !saved.schedule || saved.schedule.length === 0) return;
 
-  state.rawText = saved.rawText || "";
-  state.reels = saved.reels;
   state.cliente = saved.cliente || "";
   state.calendarYear = saved.calendarYear ?? new Date().getFullYear();
   state.calendarMonth = saved.calendarMonth ?? new Date().getMonth();
-  state.schedule = (saved.schedule || []).map(e => ({ ...e, fecha: new Date(e.fecha) }));
+  state.schedule = saved.schedule.map(e => ({ ...e, fecha: new Date(e.fecha) }));
 
   clienteInput.value = state.cliente;
-  renderReelsList();
 
-  const step = Math.min(saved.currentStep || 2, 4);
-  if (step >= 3) renderStep3();
+  const step = Math.min(saved.currentStep || 1, 2);
   showStep(step);
 }
 
@@ -875,7 +650,7 @@ function capitalize(str) {
 }
 
 // ============================================================
-// PASO 4 — ENTREGABLES
+// ENTREGA
 // ============================================================
 document.getElementById("downloadPdfBtn").addEventListener("click", generateClientPDF);
 document.getElementById("downloadTxtBtn").addEventListener("click", generateCopyoutsTXT);
@@ -883,17 +658,14 @@ document.getElementById("downloadCalBtn").addEventListener("click", generateCale
 document.getElementById("restartBtn").addEventListener("click", restartApp);
 
 function restartApp() {
-  loadedFile = null;
-  fileNameDisplay.textContent = "";
-  rawTextInput.value = "";
-  fileInput.value = "";
   clienteInput.value = "";
-  state.reels = [];
+  state.cliente = "";
   state.schedule = [];
   state.calendarYear = new Date().getFullYear();
   state.calendarMonth = new Date().getMonth();
   clearSession();
   showStep(1);
+  renderStep3();
 }
 
 // ---------- PDF PARA CLIENTE (portada + una pagina por reel/imagen/carrusel) ----------
@@ -1018,15 +790,15 @@ function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
 
   return `
     <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
-      <div style="flex:1; padding:64px 50px; display:flex; flex-direction:column;">
+      <div style="flex:1; padding:28px 50px 64px; display:flex; flex-direction:column;">
         <div style="display:inline-flex; align-items:center; gap:8px; border:1.5px solid ${PDF_RED}; border-radius:6px; padding:8px 16px; align-self:flex-start;">
           <span style="color:${PDF_RED}; font-size:14px;">▶</span>
           <span style="font-family:'Inter',sans-serif; font-weight:800; font-size:13px; color:${PDF_RED}; letter-spacing:1px;">REEL</span>
         </div>
-        <div style="width:30px; height:2px; background:${PDF_RED}; margin:18px 0 6px;"></div>
+        <div style="width:30px; height:2px; background:${PDF_RED}; margin:12px 0 6px;"></div>
         <div style="font-family:'Inter',sans-serif; font-size:13px; color:#666;">Duración aprox.<br>30 - 40 seg.</div>
 
-        <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">
           <div style="width:300px; height:560px; background:#000; border-radius:38px; padding:14px; box-sizing:border-box; box-shadow:0 30px 60px rgba(0,0,0,0.25);">
             <div style="width:100%; height:100%; border-radius:26px; background:radial-gradient(circle at 80% 15%, rgba(255,0,0,0.25), transparent 45%), linear-gradient(160deg, #1A1A1A 0%, #050505 70%); position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:center; padding:30px; box-sizing:border-box;">
               <div style="position:absolute; top:18px; left:18px; width:60px; height:60px; background-image:radial-gradient(circle, #444 1.4px, transparent 1.4px); background-size:10px 10px; opacity:0.5;"></div>
@@ -1037,6 +809,11 @@ function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
               </div>
               <div style="position:absolute; bottom:26px; left:30px; font-family:'Archivo Black',sans-serif; font-weight:900; font-size:15px; color:#fff;">BR<span style="color:${PDF_RED};">A</span>VO<span style="font-family:'Inter',sans-serif; font-size:8px; color:#999; letter-spacing:2px; margin-left:4px;">AGENCIA</span></div>
             </div>
+          </div>
+          <div style="width:300px; margin-top:8px; text-align:center;">
+            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:9px; color:#9A9A9A; letter-spacing:1px; text-transform:uppercase;">Tema del Reel</div>
+            <div style="font-family:'Inter',sans-serif; font-size:10px; color:#6A6A6A; margin-top:2px;">${escapeHtml(entry.tema || "")}</div>
+            <div style="font-family:'Inter',sans-serif; font-size:8.5px; color:#AFAFAF; margin-top:5px; line-height:1.3; font-style:italic;">Nota: el video editado se enviará por WhatsApp para que puedan verlo en la mejor calidad antes de su publicación.</div>
           </div>
         </div>
       </div>
@@ -1273,19 +1050,30 @@ function generateCopyoutsPDF() {
   doc.save(`Copyouts_${slugify(state.cliente)}.pdf`);
 }
 
-// ---------- TXT DE COPYOUTS (para copiar/pegar en Meta, conserva emojis) ----------
+// ---------- TXT (para copiar/pegar en Meta, conserva emojis) ----------
 function generateCopyoutsTXT() {
+  if (state.schedule.length === 0) {
+    alert("Todavía no has agregado ningún reel, imagen o carrusel.");
+    return;
+  }
+
+  const sorted = [...state.schedule].sort((a, b) => {
+    const diff = a.fecha - b.fecha;
+    if (diff !== 0) return diff;
+    return (a.hora || "").localeCompare(b.hora || "");
+  });
+
   const lines = [];
-  lines.push(`COPYOUTS PARA REELS - ${state.cliente}`.toUpperCase());
+  lines.push(`PROGRAMACIÓN DE CONTENIDO - ${state.cliente}`.toUpperCase());
   lines.push("Contenido preparado para publicación en redes sociales.");
   lines.push("");
 
-  state.reels.forEach(reel => {
+  sorted.forEach(entry => {
     lines.push("================================");
-    lines.push(`REEL ${reel.numero} · ${(reel.tipo || "valor").toUpperCase()}`);
-    lines.push(`Tema: ${reel.tema}`);
+    lines.push(`${entry.contentType.toUpperCase()} · ${formatDateEs(entry.fecha)} · ${entry.hora}`);
+    lines.push(`Tema: ${entry.tema || ""}`);
     lines.push("");
-    lines.push(reel.copyout);
+    lines.push(entry.copyout || "");
     lines.push("");
   });
 
@@ -1345,12 +1133,10 @@ function buildCalendarHTML() {
       <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
         ${day.items.map(item => {
           const esReel = item.contentType === "reel";
-          const colorBorde = esReel ? (item.tipo === "venta" ? "#FF0000" : "#5A5A5A") : "#5A5A5A";
-          const colorTag = esReel ? (item.tipo === "venta" ? "#FF0000" : "#8A8A8A") : "#8A8A8A";
-          const etiqueta = esReel
-            ? `REEL ${item.numero} · ${item.hora} · ${(item.tipo || "valor").toUpperCase()}`
-            : `${item.contentType === "imagen" ? "IMAGEN" : "CARRUSEL"} · ${item.hora}`;
-          const titulo = esReel ? escapeHtml(item.tema) : entryLabel(item);
+          const colorBorde = esReel ? "#FF0000" : "#5A5A5A";
+          const colorTag = esReel ? "#FF0000" : "#8A8A8A";
+          const etiqueta = `${item.contentType.toUpperCase()} · ${item.hora}`;
+          const titulo = entryLabel(item);
           return `
           <div style="background:#141414; border:1px solid #2A2A2A; border-left:3px solid ${colorBorde}; border-radius:5px; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px;">
             <div>
@@ -1391,6 +1177,8 @@ function slugify(str) {
 }
 
 // ============================================================
-// AL CARGAR LA PAGINA: intentar recuperar el progreso guardado
+// AL CARGAR LA PAGINA: mostrar el calendario directamente
+// (vacío, o recuperando el avance guardado si existe)
 // ============================================================
 loadSession();
+renderStep3();

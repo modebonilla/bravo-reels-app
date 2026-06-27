@@ -762,6 +762,7 @@ textarea:focus, input:focus, select:focus {
 }
 
 /* ---------- NUEVOS TIPOS DE TARJETA EN EL CALENDARIO ---------- */
+.cal-badge.tipo-reel { background: var(--red); }
 .cal-badge.tipo-imagen { background: #2E5BFF; }
 .cal-badge.tipo-carrusel { background: #8A4FFF; }
 

@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bravo Agencia · Generador de Copyouts &amp; Calendario</title>
+<title>Bravo Agencia · Programador de Contenido</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -17,23 +17,15 @@
     <div class="brand-mark">
       <span class="brand-word">BRAVO</span><span class="brand-word brand-accent">AGENCIA</span>
     </div>
-    <p class="brand-tag">Generador de Copyouts &amp; Calendario</p>
+    <p class="brand-tag">Programador de Contenido</p>
 
     <nav class="steps" id="stepsNav">
       <div class="step-item active" data-step="1">
         <span class="step-num">01</span>
-        <span class="step-label">CARGA_GUIONES</span>
+        <span class="step-label">CALENDARIO</span>
       </div>
       <div class="step-item" data-step="2">
         <span class="step-num">02</span>
-        <span class="step-label">REVISION_COPY</span>
-      </div>
-      <div class="step-item" data-step="3">
-        <span class="step-num">03</span>
-        <span class="step-label">CALENDARIO</span>
-      </div>
-      <div class="step-item" data-step="4">
-        <span class="step-num">04</span>
         <span class="step-label">ENTREGA</span>
       </div>
     </nav>
@@ -46,61 +38,16 @@
 
   <main class="content">
 
-    <!-- STEP 1 -->
+    <!-- PASO 1: CALENDARIO -->
     <section class="panel" id="panel-1">
       <p class="eyebrow">// 01</p>
-      <h1>Sube tus guiones</h1>
-      <p class="hint">Acepta PDF, Word (.docx) o texto plano. Si vienen varios guiones en un solo archivo, sepáralos con una línea que diga <code>---</code>. La IA también puede identificarlos solos si vienen numerados o claramente separados.</p>
-
-      <div class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden>
-        <p class="dropzone-text">Arrastra tu archivo aquí o <button type="button" id="browseBtn" class="link-btn">elige un archivo</button></p>
-        <p class="filename" id="fileNameDisplay"></p>
-      </div>
-
-      <p class="divider-text">— o pega el texto directamente —</p>
-
-      <textarea id="rawTextInput" placeholder="Pega aquí tus guiones..."></textarea>
-
-      <div id="step1Error" class="error-msg hidden"></div>
-
-      <div class="panel-actions">
-        <button type="button" id="processBtn" class="btn-primary">Identificar guiones y generar copyouts →</button>
-      </div>
-    </section>
-
-    <!-- STEP 2 -->
-    <section class="panel hidden" id="panel-2">
-      <p class="eyebrow">// 02</p>
-      <h1>Revisión de copyouts</h1>
-      <p class="hint" id="reelCountHint">La IA identificó tus guiones. Ajusta lo que necesites antes de continuar.</p>
-
-      <div id="reelsList" class="reels-list"></div>
-
-      <div class="panel-actions">
-        <div class="panel-actions-left">
-          <button type="button" id="backTo1Btn" class="btn-ghost">← Volver</button>
-          <button type="button" id="downloadTxtStep2Btn" class="btn-ghost">⬇ Descargar TXT</button>
-        </div>
-        <button type="button" id="continueTo3Btn" class="btn-primary">Avanzar a programación →</button>
-      </div>
-    </section>
-
-    <!-- STEP 3 -->
-    <section class="panel hidden" id="panel-3">
-      <p class="eyebrow">// 03</p>
-      <h1>Elige fecha y hora de cada reel</h1>
-      <p class="hint">Da clic en cualquier día para abrir el menú: asignar un reel pendiente, agregar una imagen o agregar un carrusel. Las tarjetas ya puestas en el calendario se pueden editar, eliminar o arrastrar a otro día.</p>
+      <h1>Programa tu contenido</h1>
+      <p class="hint">Da clic en cualquier día para abrir el menú: agregar un reel, una imagen o un carrusel. Las tarjetas ya puestas en el calendario se pueden editar, eliminar o arrastrar a otro día.</p>
 
       <label class="field field-narrow">
         <span class="field-label">Nombre del cliente</span>
         <input type="text" id="clienteInput" placeholder="Ej. Laboratorios Cuore">
       </label>
-
-      <div class="pending-block">
-        <span class="field-label">Pendientes por asignar</span>
-        <div id="pendingReelsRow" class="pending-chips"></div>
-      </div>
 
       <div class="calendar-card">
         <div class="calendar-nav">
@@ -115,21 +62,20 @@
       </div>
 
       <div class="assigned-block">
-        <span class="field-label">Programación asignada</span>
+        <span class="field-label">Programación agregada</span>
         <div id="assignedList" class="assigned-list"></div>
       </div>
 
       <div id="step3Error" class="error-msg hidden"></div>
 
       <div class="panel-actions">
-        <button type="button" id="backTo2Btn" class="btn-ghost">← Volver</button>
-        <button type="button" id="generateBtn" class="btn-primary">Generar entregables →</button>
+        <button type="button" id="generateBtn" class="btn-primary" style="margin-left:auto;">Generar entregables →</button>
       </div>
     </section>
 
-    <!-- STEP 4 -->
-    <section class="panel hidden" id="panel-4">
-      <p class="eyebrow">// 04</p>
+    <!-- PASO 2: ENTREGA -->
+    <section class="panel hidden" id="panel-2">
+      <p class="eyebrow">// 02</p>
       <h1>Listo. Tus entregables están preparados.</h1>
       <p class="hint" id="deliverySummary"></p>
 
@@ -142,7 +88,7 @@
         </div>
         <div class="deliverable-card">
           <span class="deliverable-tag">TXT</span>
-          <h3>Copyouts en texto plano</h3>
+          <h3>Copys en texto plano</h3>
           <p id="txtDeliverableDesc">Para copiar y pegar directo en Meta — conserva los emojis perfecto.</p>
           <button type="button" id="downloadTxtBtn" class="btn-primary">Descargar TXT</button>
         </div>
@@ -173,10 +119,8 @@
   <div class="modal-box" id="modalBox"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
