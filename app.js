@@ -358,7 +358,7 @@ function openReelModal(key) {
   document.getElementById("reelModalSave").addEventListener("click", () => {
     const errorEl = document.getElementById("reelModalError");
     const tema = document.getElementById("reelTemaInput").value.trim();
-    const copyout = document.getElementById("reelCopyInput").value.trim();
+    const copyout = document.getElementById("reelCopyInput").value;
     const hora = document.getElementById("reelHoraInput").value || "10:00";
 
     if (!tema) {
@@ -421,7 +421,7 @@ function openImagenModal(key) {
     const errorEl = document.getElementById("imgModalError");
     const file = fileInputEl.files[0];
     const tema = document.getElementById("imgTemaInput").value.trim();
-    const copyout = document.getElementById("imgCopyInput").value.trim();
+    const copyout = document.getElementById("imgCopyInput").value;
     const hora = document.getElementById("imgHoraInput").value || "10:00";
 
     if (!file) {
@@ -492,7 +492,7 @@ function openCarruselModal(key) {
     const errorEl = document.getElementById("carModalError");
     const files = Array.from(fileInputEl.files || []);
     const tema = document.getElementById("carTemaInput").value.trim();
-    const copyout = document.getElementById("carCopyInput").value.trim();
+    const copyout = document.getElementById("carCopyInput").value;
     const hora = document.getElementById("carHoraInput").value || "10:00";
 
     if (files.length === 0) {
@@ -540,7 +540,7 @@ function openEditEntryModal(id) {
       ${temaField}
       <div class="modal-field">
         <label>Copy out</label>
-        <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
+        <textarea id="editCopyInput"></textarea>
       </div>
     `;
   } else {
@@ -555,7 +555,7 @@ function openEditEntryModal(id) {
       ${temaField}
       <div class="modal-field">
         <label>Copy out</label>
-        <textarea id="editCopyInput">${escapeHtml(entry.copyout || "")}</textarea>
+        <textarea id="editCopyInput"></textarea>
       </div>
     `;
   }
@@ -573,6 +573,8 @@ function openEditEntryModal(id) {
       <button type="button" class="btn-primary" id="editSaveBtn">Guardar</button>
     </div>
   `);
+
+  document.getElementById("editCopyInput").value = entry.copyout || "";
 
   document.getElementById("editDeleteBtn").addEventListener("click", () => {
     closeModal();
@@ -790,15 +792,15 @@ function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
 
   return `
     <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
-      <div style="flex:1; padding:28px 50px 64px; display:flex; flex-direction:column;">
+      <div style="flex:1; padding:64px 50px; display:flex; flex-direction:column;">
         <div style="display:inline-flex; align-items:center; gap:8px; border:1.5px solid ${PDF_RED}; border-radius:6px; padding:8px 16px; align-self:flex-start;">
           <span style="color:${PDF_RED}; font-size:14px;">▶</span>
           <span style="font-family:'Inter',sans-serif; font-weight:800; font-size:13px; color:${PDF_RED}; letter-spacing:1px;">REEL</span>
         </div>
-        <div style="width:30px; height:2px; background:${PDF_RED}; margin:12px 0 6px;"></div>
+        <div style="width:30px; height:2px; background:${PDF_RED}; margin:18px 0 6px;"></div>
         <div style="font-family:'Inter',sans-serif; font-size:13px; color:#666;">Duración aprox.<br>30 - 40 seg.</div>
 
-        <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="flex:1; display:flex; align-items:center; justify-content:center;">
           <div style="width:300px; height:560px; background:#000; border-radius:38px; padding:14px; box-sizing:border-box; box-shadow:0 30px 60px rgba(0,0,0,0.25);">
             <div style="width:100%; height:100%; border-radius:26px; background:radial-gradient(circle at 80% 15%, rgba(255,0,0,0.25), transparent 45%), linear-gradient(160deg, #1A1A1A 0%, #050505 70%); position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:center; padding:30px; box-sizing:border-box;">
               <div style="position:absolute; top:18px; left:18px; width:60px; height:60px; background-image:radial-gradient(circle, #444 1.4px, transparent 1.4px); background-size:10px 10px; opacity:0.5;"></div>
@@ -807,13 +809,9 @@ function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
               <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:27px; line-height:1.18; color:#fff;">
                 ${escapeHtml(resto)} <span style="background:${PDF_RED}; padding:3px 10px; display:inline-block;">${escapeHtml(ultima)}</span>
               </div>
+              <div style="position:absolute; bottom:50px; left:30px; right:30px; font-family:'Inter',sans-serif; font-size:7.5px; color:#9A9A9A; line-height:1.35; font-style:italic;">Nota: El video editado se enviará por WhatsApp para verlo en la mejor calidad. Esto solo es una referencia para identificar el tema programado.</div>
               <div style="position:absolute; bottom:26px; left:30px; font-family:'Archivo Black',sans-serif; font-weight:900; font-size:15px; color:#fff;">BR<span style="color:${PDF_RED};">A</span>VO<span style="font-family:'Inter',sans-serif; font-size:8px; color:#999; letter-spacing:2px; margin-left:4px;">AGENCIA</span></div>
             </div>
-          </div>
-          <div style="width:300px; margin-top:8px; text-align:center;">
-            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:9px; color:#9A9A9A; letter-spacing:1px; text-transform:uppercase;">Tema del Reel</div>
-            <div style="font-family:'Inter',sans-serif; font-size:10px; color:#6A6A6A; margin-top:2px;">${escapeHtml(entry.tema || "")}</div>
-            <div style="font-family:'Inter',sans-serif; font-size:8.5px; color:#AFAFAF; margin-top:5px; line-height:1.3; font-style:italic;">Nota: el video editado se enviará por WhatsApp para que puedan verlo en la mejor calidad antes de su publicación.</div>
           </div>
         </div>
       </div>
