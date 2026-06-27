@@ -984,48 +984,25 @@ function pdfCoverBullet(icon, title, sub) {
 
 function buildPdfCoverHTML(cliente, mesAnioTexto) {
   return `
-    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; overflow:hidden; box-sizing:border-box;">
-      <div style="position:absolute; inset:0; overflow:hidden;">
-        <div style="position:absolute; top:-60px; left:-120px; width:900px; height:920px; background:#0A0A0A; transform:skewX(-11deg); transform-origin:top left;"></div>
-        <div style="position:absolute; top:-60px; left:686px; width:16px; height:920px; background:${PDF_RED}; transform:skewX(-11deg); transform-origin:top left;"></div>
-      </div>
+    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:radial-gradient(circle at 88% 80%, rgba(255,0,0,0.20), transparent 55%), radial-gradient(circle at 10% 0%, rgba(255,0,0,0.10), transparent 45%), #0A0A0A; font-family:'Inter',sans-serif; overflow:hidden; box-sizing:border-box; display:flex; align-items:center;">
 
-      <div style="position:absolute; top:60px; left:70px; z-index:2;">
-        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:32px; color:#fff; letter-spacing:1px;">
-          BR<span style="color:${PDF_RED};">A</span>VO
-        </div>
-        <div style="font-family:'Inter',sans-serif; font-size:12px; color:#fff; letter-spacing:6px; margin-top:4px;">AGENCIA</div>
-      </div>
+      <div style="position:relative; z-index:2; padding:0 90px; width:100%;">
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:64px; line-height:1.08; color:#fff;">PROGRAMACIÓN</div>
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:64px; line-height:1.08; color:${PDF_RED};">DE CONTENIDOS</div>
 
-      <div style="position:absolute; top:225px; left:70px; z-index:2; width:560px;">
-        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:56px; line-height:1.08; color:#fff;">PROGRAMACIÓN</div>
-        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:56px; line-height:1.08; color:${PDF_RED};">DE CONTENIDOS</div>
-        <div style="width:60px; height:4px; background:${PDF_RED}; margin:24px 0;"></div>
-        <div style="font-family:'Inter',sans-serif; font-size:14px; color:#E5E5E5; letter-spacing:3px;">PLAN MENSUAL DE PUBLICACIONES</div>
-      </div>
+        <div style="width:64px; height:4px; background:${PDF_RED}; margin:28px 0 26px;"></div>
 
-      <div style="position:absolute; bottom:120px; left:70px; z-index:2; display:flex; gap:38px;">
-        <div style="border-left:3px solid ${PDF_RED}; padding-left:14px;">
-          <div style="font-family:'Inter',sans-serif; font-size:11px; color:#9A9A9A; letter-spacing:1px;">CLIENTE</div>
-          <div style="font-family:'Inter',sans-serif; font-size:18px; font-weight:700; color:#fff;">${escapeHtml(cliente)}</div>
-        </div>
-        <div style="border-left:3px solid ${PDF_RED}; padding-left:14px;">
-          <div style="font-family:'Inter',sans-serif; font-size:11px; color:#9A9A9A; letter-spacing:1px;">PERIODO</div>
-          <div style="font-family:'Inter',sans-serif; font-size:18px; font-weight:700; color:#fff;">${mesAnioTexto.toUpperCase()}</div>
-        </div>
-      </div>
+        <div style="font-family:'Inter',sans-serif; font-size:14px; color:#C9C9C9; letter-spacing:4px;">PLAN MENSUAL DE PUBLICACIONES</div>
 
-      <div style="position:absolute; top:0; right:0; width:36%; height:100%; display:flex; flex-direction:column; justify-content:center; gap:42px; padding:0 56px; box-sizing:border-box; z-index:1;">
-        ${pdfCoverBullet("📅", "ESTRATEGIA", "que conecta")}
-        <div style="height:1px; background:#E5E5E5;"></div>
-        ${pdfCoverBullet("💡", "CONTENIDO", "que posiciona")}
-        <div style="height:1px; background:#E5E5E5;"></div>
-        ${pdfCoverBullet("📈", "RESULTADOS", "que hacen crecer")}
-      </div>
-
-      <div style="position:absolute; bottom:0; left:0; width:100%; background:#0A0A0A; padding:24px 60px; display:flex; align-items:center; box-sizing:border-box; z-index:3;">
-        <div style="font-family:'Inter',sans-serif; font-size:13px; color:#fff; letter-spacing:0.5px;">
-          CONVERTIMOS TU MARKETING EN UN <span style="color:${PDF_RED}; font-weight:700;">SISTEMA</span> QUE GENERA <span style="color:${PDF_RED}; font-weight:700;">CLIENTES</span>.
+        <div style="display:flex; gap:64px; margin-top:64px;">
+          <div>
+            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:11px; color:${PDF_RED}; letter-spacing:1.5px; margin-bottom:6px;">CLIENTE</div>
+            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:24px; color:#fff;">${escapeHtml(cliente)}</div>
+          </div>
+          <div>
+            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:11px; color:${PDF_RED}; letter-spacing:1.5px; margin-bottom:6px;">PERÍODO</div>
+            <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:24px; color:#fff;">${mesAnioTexto.toUpperCase()}</div>
+          </div>
         </div>
       </div>
     </div>
