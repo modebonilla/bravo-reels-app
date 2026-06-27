@@ -877,7 +877,7 @@ function capitalize(str) {
 // ============================================================
 // PASO 4 — ENTREGABLES
 // ============================================================
-document.getElementById("downloadPdfBtn").addEventListener("click", generateCopyoutsPDF);
+document.getElementById("downloadPdfBtn").addEventListener("click", generateClientPDF);
 document.getElementById("downloadTxtBtn").addEventListener("click", generateCopyoutsTXT);
 document.getElementById("downloadCalBtn").addEventListener("click", generateCalendarImage);
 document.getElementById("restartBtn").addEventListener("click", restartApp);
@@ -894,6 +894,298 @@ function restartApp() {
   state.calendarMonth = new Date().getMonth();
   clearSession();
   showStep(1);
+}
+
+// ---------- PDF PARA CLIENTE (portada + una pagina por reel/imagen/carrusel) ----------
+const PDF_PAGE_W = 1200;
+const PDF_PAGE_H = 800;
+const PDF_RED = "#FF0000";
+
+function formatFechaLarga(date) {
+  return `${date.getDate()} de ${MES_NOMBRES[date.getMonth()]} de ${date.getFullYear()}`;
+}
+
+function formatHora12(hora24) {
+  if (!hora24) return "";
+  const [hStr, m] = hora24.split(":");
+  let h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? "p.m." : "a.m.";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function pdfCopySize(copyout) {
+  const len = (copyout || "").length;
+  if (len < 280) return 15;
+  if (len < 500) return 13;
+  if (len < 800) return 11.5;
+  return 10;
+}
+
+function pdfInfoColumnHTML(fechaTexto, horaTexto, copyout) {
+  const fontSize = pdfCopySize(copyout);
+  return `
+    <div style="width:430px; flex-shrink:0; padding:64px 56px 100px; display:flex; flex-direction:column; box-sizing:border-box; height:100%;">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#F2F2F2;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">📅</div>
+        <div>
+          <div style="font-family:'Inter',sans-serif;font-weight:700;font-size:11px;color:${PDF_RED};letter-spacing:1.5px;">FECHA DE PUBLICACIÓN</div>
+          <div style="font-family:'Inter',sans-serif;font-weight:700;font-size:21px;color:#111;">${escapeHtml(fechaTexto)}</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:26px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#F2F2F2;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🕐</div>
+        <div>
+          <div style="font-family:'Inter',sans-serif;font-weight:700;font-size:11px;color:${PDF_RED};letter-spacing:1.5px;">HORA DE PUBLICACIÓN</div>
+          <div style="font-family:'Inter',sans-serif;font-weight:700;font-size:21px;color:#111;">${escapeHtml(horaTexto)}</div>
+        </div>
+      </div>
+      <div style="height:1px; background:#E2E2E2; margin:6px 0 26px;"></div>
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#F2F2F2;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">✏️</div>
+        <div style="font-family:'Inter',sans-serif;font-weight:700;font-size:11px;color:${PDF_RED};letter-spacing:1.5px;">COPY OUT</div>
+      </div>
+      <div style="font-family:'Inter',sans-serif;font-size:${fontSize}px;line-height:1.6;color:#222;white-space:pre-wrap;overflow:hidden; flex:1;">${escapeHtml(copyout || "(sin copy out)")}</div>
+    </div>
+  `;
+}
+
+function pdfFooterHTML(mesAnioTexto, pageNum) {
+  return `
+    <div style="position:absolute; left:0; right:0; bottom:0;">
+      <div style="height:3px; background:${PDF_RED};"></div>
+      <div style="background:#0A0A0A; padding:20px 50px; display:flex; align-items:center; justify-content:space-between;">
+        <div style="font-family:'Inter',sans-serif; font-size:12px; color:#CFCFCF; letter-spacing:0.5px;">
+          PROGRAMACIÓN DE CONTENIDOS <span style="color:#5A5A5A;">|</span> ${mesAnioTexto.toUpperCase()}
+        </div>
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:15px; color:#fff;">
+          BR<span style="color:${PDF_RED};">A</span>VO <span style="font-family:'Inter',sans-serif; font-weight:600; font-size:11px; color:#8A8A8A; letter-spacing:2px;">AGENCIA</span>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#CFCFCF;">
+          ${String(pageNum).padStart(2, "0")} <span style="color:${PDF_RED};">—</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function pdfCoverBullet(icon, title, sub) {
+  return `
+    <div style="display:flex; align-items:center; gap:18px;">
+      <div style="width:46px; height:46px; border-radius:50%; background:#0A0A0A; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0;">${icon}</div>
+      <div>
+        <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:16px; color:#111;">${title}</div>
+        <div style="font-family:'Inter',sans-serif; font-size:13px; color:#6A6A6A;">${sub}</div>
+      </div>
+    </div>
+  `;
+}
+
+function buildPdfCoverHTML(cliente, mesAnioTexto) {
+  return `
+    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; overflow:hidden; box-sizing:border-box;">
+      <div style="position:absolute; inset:0; overflow:hidden;">
+        <div style="position:absolute; top:-60px; left:-120px; width:900px; height:920px; background:#0A0A0A; transform:skewX(-11deg); transform-origin:top left;"></div>
+        <div style="position:absolute; top:-60px; left:686px; width:16px; height:920px; background:${PDF_RED}; transform:skewX(-11deg); transform-origin:top left;"></div>
+      </div>
+
+      <div style="position:absolute; top:60px; left:70px; z-index:2;">
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:32px; color:#fff; letter-spacing:1px;">
+          BR<span style="color:${PDF_RED};">A</span>VO
+        </div>
+        <div style="font-family:'Inter',sans-serif; font-size:12px; color:#fff; letter-spacing:6px; margin-top:4px;">AGENCIA</div>
+      </div>
+
+      <div style="position:absolute; top:225px; left:70px; z-index:2; width:560px;">
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:56px; line-height:1.08; color:#fff;">PROGRAMACIÓN</div>
+        <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:56px; line-height:1.08; color:${PDF_RED};">DE CONTENIDOS</div>
+        <div style="width:60px; height:4px; background:${PDF_RED}; margin:24px 0;"></div>
+        <div style="font-family:'Inter',sans-serif; font-size:14px; color:#E5E5E5; letter-spacing:3px;">PLAN MENSUAL DE PUBLICACIONES</div>
+      </div>
+
+      <div style="position:absolute; bottom:120px; left:70px; z-index:2; display:flex; gap:38px;">
+        <div style="border-left:3px solid ${PDF_RED}; padding-left:14px;">
+          <div style="font-family:'Inter',sans-serif; font-size:11px; color:#9A9A9A; letter-spacing:1px;">CLIENTE</div>
+          <div style="font-family:'Inter',sans-serif; font-size:18px; font-weight:700; color:#fff;">${escapeHtml(cliente)}</div>
+        </div>
+        <div style="border-left:3px solid ${PDF_RED}; padding-left:14px;">
+          <div style="font-family:'Inter',sans-serif; font-size:11px; color:#9A9A9A; letter-spacing:1px;">PERIODO</div>
+          <div style="font-family:'Inter',sans-serif; font-size:18px; font-weight:700; color:#fff;">${mesAnioTexto.toUpperCase()}</div>
+        </div>
+      </div>
+
+      <div style="position:absolute; top:0; right:0; width:36%; height:100%; display:flex; flex-direction:column; justify-content:center; gap:42px; padding:0 56px; box-sizing:border-box; z-index:1;">
+        ${pdfCoverBullet("📅", "ESTRATEGIA", "que conecta")}
+        <div style="height:1px; background:#E5E5E5;"></div>
+        ${pdfCoverBullet("💡", "CONTENIDO", "que posiciona")}
+        <div style="height:1px; background:#E5E5E5;"></div>
+        ${pdfCoverBullet("📈", "RESULTADOS", "que hacen crecer")}
+      </div>
+
+      <div style="position:absolute; bottom:0; left:0; width:100%; background:#0A0A0A; padding:24px 60px; display:flex; align-items:center; box-sizing:border-box; z-index:3;">
+        <div style="font-family:'Inter',sans-serif; font-size:13px; color:#fff; letter-spacing:0.5px;">
+          CONVERTIMOS TU MARKETING EN UN <span style="color:${PDF_RED}; font-weight:700;">SISTEMA</span> QUE GENERA <span style="color:${PDF_RED}; font-weight:700;">CLIENTES</span>.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
+  const palabras = (entry.tema || "").trim().split(/\s+/);
+  const ultima = palabras.pop() || "";
+  const resto = palabras.join(" ");
+  const fechaTexto = formatFechaLarga(entry.fecha);
+  const horaTexto = formatHora12(entry.hora);
+
+  return `
+    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
+      <div style="flex:1; padding:64px 50px; display:flex; flex-direction:column;">
+        <div style="display:inline-flex; align-items:center; gap:8px; border:1.5px solid ${PDF_RED}; border-radius:6px; padding:8px 16px; align-self:flex-start;">
+          <span style="color:${PDF_RED}; font-size:14px;">▶</span>
+          <span style="font-family:'Inter',sans-serif; font-weight:800; font-size:13px; color:${PDF_RED}; letter-spacing:1px;">REEL</span>
+        </div>
+        <div style="width:30px; height:2px; background:${PDF_RED}; margin:18px 0 6px;"></div>
+        <div style="font-family:'Inter',sans-serif; font-size:13px; color:#666;">Duración aprox.<br>30 - 40 seg.</div>
+
+        <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+          <div style="width:300px; height:560px; background:#000; border-radius:38px; padding:14px; box-sizing:border-box; box-shadow:0 30px 60px rgba(0,0,0,0.25);">
+            <div style="width:100%; height:100%; border-radius:26px; background:radial-gradient(circle at 80% 15%, rgba(255,0,0,0.25), transparent 45%), linear-gradient(160deg, #1A1A1A 0%, #050505 70%); position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:center; padding:30px; box-sizing:border-box;">
+              <div style="position:absolute; top:18px; left:18px; width:60px; height:60px; background-image:radial-gradient(circle, #444 1.4px, transparent 1.4px); background-size:10px 10px; opacity:0.5;"></div>
+              <div style="position:absolute; bottom:-40px; right:-40px; width:150px; height:150px; border-radius:50%; background:${PDF_RED}; opacity:0.85;"></div>
+              <div style="font-family:'Inter',sans-serif; font-weight:700; font-size:11px; color:${PDF_RED}; letter-spacing:2px; margin-bottom:14px;">TÍTULO DEL REEL</div>
+              <div style="font-family:'Archivo Black',sans-serif; font-weight:900; font-size:27px; line-height:1.18; color:#fff;">
+                ${escapeHtml(resto)} <span style="background:${PDF_RED}; padding:3px 10px; display:inline-block;">${escapeHtml(ultima)}</span>
+              </div>
+              <div style="position:absolute; bottom:26px; left:30px; font-family:'Archivo Black',sans-serif; font-weight:900; font-size:15px; color:#fff;">BR<span style="color:${PDF_RED};">A</span>VO<span style="font-family:'Inter',sans-serif; font-size:8px; color:#999; letter-spacing:2px; margin-left:4px;">AGENCIA</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${pdfInfoColumnHTML(fechaTexto, horaTexto, entry.copyout)}
+      ${pdfFooterHTML(mesAnioTexto, pageNum)}
+    </div>
+  `;
+}
+
+function buildPdfImagenHTML(entry, mesAnioTexto, pageNum) {
+  const fechaTexto = formatFechaLarga(entry.fecha);
+  const horaTexto = formatHora12(entry.hora);
+  return `
+    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
+      <div style="flex:1; padding:64px 50px; display:flex; align-items:center; justify-content:center;">
+        <div style="border:2px solid ${PDF_RED}; border-radius:4px; padding:6px; width:100%; height:600px; box-sizing:border-box;">
+          <img src="${entry.imagenes[0]}" style="width:100%; height:100%; object-fit:cover; border-radius:2px; display:block;">
+        </div>
+      </div>
+      ${pdfInfoColumnHTML(fechaTexto, horaTexto, entry.copyout)}
+      ${pdfFooterHTML(mesAnioTexto, pageNum)}
+    </div>
+  `;
+}
+
+function buildPdfCarruselHTML(entry, mesAnioTexto, pageNum) {
+  const imgs = entry.imagenes || [];
+  const fechaTexto = formatFechaLarga(entry.fecha);
+  const horaTexto = formatHora12(entry.hora);
+  const thumbs = imgs.map(src => `
+    <div style="background:#000; border-radius:6px; overflow:hidden;">
+      <img src="${src}" style="width:100%; height:100%; object-fit:cover; display:block;">
+    </div>
+  `).join("");
+
+  return `
+    <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
+      <div style="flex:1; padding:54px 50px 0; display:flex; flex-direction:column;">
+        <div style="display:inline-flex; align-self:flex-start; background:#0A0A0A; color:#fff; font-family:'Inter',sans-serif; font-weight:700; font-size:12px; letter-spacing:1px; padding:9px 16px; border-radius:5px; margin-bottom:18px;">
+          CARRUSEL (${imgs.length} IMÁGENES)
+        </div>
+        <div style="flex:1; display:grid; grid-template-columns:repeat(${imgs.length > 4 ? 3 : 2}, 1fr); gap:12px; max-height:560px;">
+          ${thumbs}
+        </div>
+      </div>
+      ${pdfInfoColumnHTML(fechaTexto, horaTexto, entry.copyout)}
+      ${pdfFooterHTML(mesAnioTexto, pageNum)}
+    </div>
+  `;
+}
+
+function waitForImages(container) {
+  const imgs = Array.from(container.querySelectorAll("img"));
+  return Promise.all(imgs.map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      img.onload = resolve;
+      img.onerror = resolve;
+    });
+  }));
+}
+
+async function renderPdfPage(doc, html, isFirstPage) {
+  const target = document.getElementById("calendarRenderTarget");
+  target.style.width = `${PDF_PAGE_W}px`;
+  target.innerHTML = html;
+  await new Promise(r => setTimeout(r, 80));
+  await waitForImages(target);
+
+  const canvas = await html2canvas(target, {
+    width: PDF_PAGE_W,
+    height: PDF_PAGE_H,
+    scale: 2,
+    backgroundColor: "#FFFFFF",
+    useCORS: true
+  });
+  const imgData = canvas.toDataURL("image/jpeg", 0.92);
+
+  if (!isFirstPage) doc.addPage([PDF_PAGE_W, PDF_PAGE_H], "landscape");
+  doc.addImage(imgData, "JPEG", 0, 0, PDF_PAGE_W, PDF_PAGE_H);
+}
+
+async function generateClientPDF() {
+  if (state.schedule.length === 0) {
+    alert("Todavía no has programado ningún reel, imagen o carrusel en el calendario.");
+    return;
+  }
+
+  const btn = document.getElementById("downloadPdfBtn");
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Generando PDF...";
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: [PDF_PAGE_W, PDF_PAGE_H], orientation: "landscape" });
+
+    const sorted = [...state.schedule].sort((a, b) => {
+      const diff = a.fecha - b.fecha;
+      if (diff !== 0) return diff;
+      return (a.hora || "").localeCompare(b.hora || "");
+    });
+
+    const mesAnioTexto = `${capitalize(MES_NOMBRES[sorted[0].fecha.getMonth()])} ${sorted[0].fecha.getFullYear()}`;
+
+    await renderPdfPage(doc, buildPdfCoverHTML(state.cliente, mesAnioTexto), true);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const entry = sorted[i];
+      const pageNum = i + 2;
+      let html;
+      if (entry.contentType === "reel") html = buildPdfReelHTML(entry, mesAnioTexto, pageNum);
+      else if (entry.contentType === "imagen") html = buildPdfImagenHTML(entry, mesAnioTexto, pageNum);
+      else html = buildPdfCarruselHTML(entry, mesAnioTexto, pageNum);
+      await renderPdfPage(doc, html, false);
+    }
+
+    doc.save(`Programacion_${slugify(state.cliente)}.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert(`Ocurrió un error generando el PDF: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 // ---------- PDF DE COPYOUTS ----------
