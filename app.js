@@ -1070,13 +1070,25 @@ function buildPdfReelHTML(entry, mesAnioTexto, pageNum) {
   `;
 }
 
+function fitBox4x5(maxW, maxH) {
+  const ratio = 4 / 5; // ancho / alto
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+  return { w, h };
+}
+
 function buildPdfImagenHTML(entry, mesAnioTexto, pageNum) {
   const fechaTexto = formatFechaLarga(entry.fecha);
   const horaTexto = formatHora12(entry.hora);
+  const box = fitBox4x5(670, 656);
   return `
     <div style="position:relative; width:${PDF_PAGE_W}px; height:${PDF_PAGE_H}px; background:#fff; font-family:'Inter',sans-serif; box-sizing:border-box; display:flex;">
       <div style="flex:1; padding:64px 50px; display:flex; align-items:center; justify-content:center;">
-        <div style="border:2px solid ${PDF_RED}; border-radius:4px; padding:6px; width:100%; height:600px; box-sizing:border-box;">
+        <div style="border:2px solid ${PDF_RED}; border-radius:4px; padding:6px; width:${box.w}px; height:${box.h}px; box-sizing:border-box;">
           <img src="${entry.imagenes[0]}" style="width:100%; height:100%; object-fit:cover; border-radius:2px; display:block;">
         </div>
       </div>
@@ -1086,12 +1098,29 @@ function buildPdfImagenHTML(entry, mesAnioTexto, pageNum) {
   `;
 }
 
+function computeCarruselGrid(count, areaW, areaH, gap) {
+  const maxCols = Math.min(count, 5);
+  let best = null;
+  for (let cols = 1; cols <= maxCols; cols++) {
+    const rows = Math.ceil(count / cols);
+    const cellW = (areaW - gap * (cols - 1)) / cols;
+    const cellH = cellW * 1.25; // proporcion 4:5
+    const totalH = cellH * rows + gap * (rows - 1);
+    best = { cols, cellW, cellH };
+    if (totalH <= areaH) break;
+  }
+  return best;
+}
+
 function buildPdfCarruselHTML(entry, mesAnioTexto, pageNum) {
   const imgs = entry.imagenes || [];
   const fechaTexto = formatFechaLarga(entry.fecha);
   const horaTexto = formatHora12(entry.hora);
+  const gap = 12;
+  const grid = computeCarruselGrid(imgs.length, 670, 600, gap);
+
   const thumbs = imgs.map(src => `
-    <div style="background:#000; border-radius:6px; overflow:hidden;">
+    <div style="width:${grid.cellW}px; height:${grid.cellH}px; background:#000; border-radius:6px; overflow:hidden;">
       <img src="${src}" style="width:100%; height:100%; object-fit:cover; display:block;">
     </div>
   `).join("");
@@ -1102,7 +1131,7 @@ function buildPdfCarruselHTML(entry, mesAnioTexto, pageNum) {
         <div style="display:inline-flex; align-self:flex-start; background:#0A0A0A; color:#fff; font-family:'Inter',sans-serif; font-weight:700; font-size:12px; letter-spacing:1px; padding:9px 16px; border-radius:5px; margin-bottom:18px;">
           CARRUSEL (${imgs.length} IMÁGENES)
         </div>
-        <div style="flex:1; display:grid; grid-template-columns:repeat(${imgs.length > 4 ? 3 : 2}, 1fr); gap:12px; max-height:560px;">
+        <div style="display:flex; flex-wrap:wrap; gap:${gap}px;">
           ${thumbs}
         </div>
       </div>
